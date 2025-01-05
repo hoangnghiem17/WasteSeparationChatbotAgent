@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPT Waste Separation Chatbot</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body> <!-- contains all visible content of website -->
+    <div class="container">
+        <!-- Top bar with logos -->
+        <div class="header">
+            <img src="static/frankfurt_logo.png" alt="City of Frankfurt Logo">
+            <img src="static/fes_logo.png" alt="FES Logo">
+            <img src="static/frauas_logo.png" alt="FRA UAS Logo">
+        </div>
+
+        <!-- Smooth black bar with OpenAI logo -->
+        <div class="openai-bar">
+            <img src="static/openai_logo.png" alt="OpenAI Logo">
+            <span class="bar-text">Assistent für Mülltrennung in Frankfurt am Main</span>
+        </div>
+
+        <!-- Chatbot interface -->
+        <div class="chat-container">
+            <div id="chat-window">
+                <div id="messages">
+                    <!-- Dynamic messages will appear here -->
+                </div>
+            </div>
+            <!-- Input field and send button for user -->
+            <div id="input-area">
+                <input type="text" id="user-input" placeholder="Sende eine Nachricht...">
+                <input type="file" id="image-upload" accept="image/*">
+                <button id="send-btn">Send</button>
+            </div>
+        </div>
+    </div>
+    <script src="static/js/app.js"></script>
+</body>
+</html>

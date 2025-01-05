@@ -1,22 +1,33 @@
-from flask import Flask, request, jsonify
+import logging
 
-from llm import process_text_query
+from flask import Flask, request, jsonify, render_template
+
+from llm import call_llm
+from image import convert_image
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
 
-@app.route('/process_text', methods=['POST'])
-def process_text():
-    """
-    Endpoint to process a text query.
-    """
-    data = request.get_json()
-    user_query = data.get("query", "")
+@app.route('/')
+def index():
+    return render_template("index.html")
 
-    if not user_query:
-        return jsonify({"error": "No text query provided"}), 400
+@app.route('/process_query', methods=['POST'])
+def process_query():
+    """
+    Endpoint to process a query.
+    """
+    user_query = request.form.get("query", "")
+    image_file = request.files.get("image")
 
-    answer = process_text_query(user_query)
-    return jsonify({"response": answer})
+    base64_image = None
+    if image_file:
+        base64_image = convert_image(image_file) # Delegate to image service
+
+    # Call for LLM processing
+    response = call_llm(user_query)
+    return jsonify({"response": response})
 
 if __name__ == '__main__':
     app.run(debug=True)

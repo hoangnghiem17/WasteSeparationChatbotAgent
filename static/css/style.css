@@ -1,0 +1,167 @@
+/* General reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Body styles */
+body {
+    font-family: Arial, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Container styling */
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Header with white background and logos aligned left */
+.header {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 20px;
+    padding: 10px 20px;
+    height: 10%;
+    background-color: #ffffff;
+    border-bottom: 1px solid #ccc;
+    position: sticky; /* Keep the header visible while scrolling */
+    top: 0; /* Stick to the top of the viewport */
+    z-index: 10; /* Ensure it layers above other content */
+}
+
+.header img {
+    max-height: 80%;
+    object-fit: contain;
+}
+
+/* Black bar with OpenAI logo and title */
+.openai-bar {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    height: 15%;
+    padding-left: 40px;
+    background-color: #333333; /* Black background */
+    color: white; /* White text */
+    position: sticky; /* Keep the bar visible while scrolling */
+    top: 10%; /* Stick below the header */
+    z-index: 9; /* Ensure it's layered appropriately */
+}
+
+.openai-bar img {
+    max-height: 80%; /* Scale the logo */
+    margin-right: 40px; /* Space between the logo and the text */
+}
+
+.bar-text {
+    font-family: 'Arial', sans-serif;
+    font-size: 2.5rem; /* Adjust text size */
+    font-weight: 700; /* Bold text */
+    color: white; /* Ensure text is white */
+    line-height: 1; /* Align text properly with the logo */
+}
+
+/* Chat container filing rest of space */
+.chat-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    background-color: #e9ecef;
+    overflow: hidden; /* Prevent window scrolling */
+}
+
+/* Chat window container design */
+#chat-window {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column; /* Stack messages vertically */
+    padding: 10px;
+    overflow-y: auto; /* Enable scrolling only within the chat window */
+    background-color: #f9f9f9; /* Background color for the chat window */
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+/* Messages container */
+#messages {
+    display: flex;
+    flex-direction: column; /* Ensure messages stack vertically */
+    gap: 10px; /* Add spacing between messages */
+}
+
+/* General message styling */
+.message {
+    display: block;
+    padding: 10px 15px;
+    border-radius: 15px;
+    font-size: 1.3rem;
+    line-height: 1.5;
+    max-width: 75%;
+    word-wrap: break-word;
+    white-space: pre-wrap; /* Add this line */
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1); /* Soft shadow */
+    word-break: break-word; /* Break long words */
+}
+
+/* User messages in light gray aligned to the right */
+.user-message {
+    background-color: #f1f1f1; /* Light gray background */
+    color: black; /* Black text */
+    align-self: flex-end; /* Align message bubble to the right */
+    text-align: right; /* Align text inside bubble to the right */
+}
+
+/* Bot messages in green aligned to the left */
+.bot-message {
+    background-color: rgb(49, 176, 83); /* Green background */
+    color: white; /* White text */
+    align-self: flex-start; /* Align message bubble to the left */
+    text-align: left; /* Align text inside bubble to the left */
+    white-space: pre-wrap; /* Preserve whitespace and render line breaks */
+}
+
+/* Input area styling */
+#input-area {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border-top: 1px solid #ccc;
+    background-color: #ffffff; /* White background for the input area */
+    position: sticky; /* Keep the input area visible while scrolling */
+    bottom: 0; /* Stick to the bottom of the viewport */
+    z-index: 10; /* Ensure it layers above the chat window */
+}
+
+#user-input {
+    flex-grow: 1;
+    padding: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 1.3rem;
+    height: 50px; /* Set height for the input field */
+}
+
+#send-btn {
+    padding: 10px 20px;
+    font-size: 1.3rem;
+    font-weight: 500; /* Slightly bold text */
+    background-color: rgb(49, 176, 83); /* Green background for the button */
+    color: white; /* White text */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    height: 50px; /* Match input field height */
+}
+
+#send-btn:hover {
+    background-color: rgb(39, 136, 67); /* Darker green for hover effect */
+    transform: scale(1.05); /* Small scaling effect */
+}
