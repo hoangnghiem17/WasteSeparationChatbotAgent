@@ -6,9 +6,9 @@ import io
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def convert_image(image_file):
+def encode_image(image_file):
     """
-    Convert uploaded image to base64 format for OpenAI API.
+    Encode uploaded image to base64 format for OpenAI API.
     """
     try:
         logging.info("Starting image conversion.")

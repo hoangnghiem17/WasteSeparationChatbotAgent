@@ -32,7 +32,7 @@ function handleSend() {
     scrollToBottom();
 
     // Create QueryData to send text and image
-    const queryData = new QueryData();
+    const queryData = new FormData();
     queryData.append("query", userInput);
     if (imageFile) {
         queryData.append("image", imageFile);
