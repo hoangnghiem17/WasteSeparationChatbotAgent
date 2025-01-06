@@ -31,7 +31,13 @@
             <!-- Input field and send button for user -->
             <div id="input-area">
                 <input type="text" id="user-input" placeholder="Sende eine Nachricht...">
-                <input type="file" id="image-upload" accept="image/*">
+                <div class="file-upload-wrapper">
+                    <label for="image-upload" class="custom-file-upload">
+                        Bild hochladen
+                    </label>
+                    <input type="file" id="image-upload" accept="image/*" hidden>
+                    <div id="file-name">Keine Datei ausgewählt</div>
+                </div>
                 <button id="send-btn">Send</button>
             </div>
         </div>

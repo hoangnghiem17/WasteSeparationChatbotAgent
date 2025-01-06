@@ -8,13 +8,20 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 
 def encode_image(image_file):
     """
-    Encode uploaded image to base64 format for OpenAI API.
+    Encode uploaded image to base64 format.
+    
+    Args:
+        image_file (file-like object): uploaded file from a Flask request
+        
+    Returns:
+        str or None: A base64-encoded string representation of the image
     """
     try:
         logging.info("Starting image conversion.")
         image = Image.open(image_file)
         logging.info(f"Image opened successfully: {image.format}, Size: {image.size}, Mode: {image.mode}")
         
+        # Saves image to im-memory buffer and encodes raw byte image data to base64
         img_buffer = io.BytesIO()
         image.save(img_buffer, format=image.format)
         base64_image = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
