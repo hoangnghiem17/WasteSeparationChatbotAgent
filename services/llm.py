@@ -1,9 +1,13 @@
 import os
 import logging
+from werkzeug.datastructures import FileStorage
+
 import openai
+from pydantic import ValidationError
 from dotenv import load_dotenv
 
-from image import encode_image
+from services.image import encode_image
+from models.models import TextPayload, ImagePayload, OpenAIRequest, OpenAIResponse
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -11,42 +15,40 @@ load_dotenv()
 
 client = openai.Client(api_key=os.getenv("OPENAI_API_KEY"))
 
-def call_llm(prompt, image_file=None):
+def call_llm(user_query: str, image_file: FileStorage =None) -> OpenAIResponse:
     """
     Makes API call to OpenAI multimodal LLM with optional image input.
     
     Args:
-        prompt (str): user's text input 
-        image_file (file-like object, optional): image file uploaded by user
+        user_query (str): User's text input 
+        image_file (FileStorage, optional): Uploaded image as FileStorage object
         
     Returns:
-        str: response from OpenAI LLM as text string   
+        OpenAIResponse: Response from OpenAI LLM as validated response model.
     """
     try:
-        logging.info("call_llm() invoked with prompt: %s", prompt)
+        logging.info("call_llm() invoked with prompt: %s", user_query)
         
         # Encode image if provided
         base64_image = None
         if image_file:
             base64_image = encode_image(image_file)
 
-        # Construct message content
-        message_content = [{"type": "text", "text": prompt}]
+        # Construct text payload
+        payload = [TextPayload(text=user_query).model_dump()]
         logging.debug("User prompt added to messages.")
         
+        # Append image payload if available
         if base64_image:
-            message_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{base64_image}"
-                    }
-                }
-            )
+            image_payload = ImagePayload(
+                image_url={"url": f"data:image/jpeg;base64,{base64_image}"}
+            ).model_dump()
+            payload.append(image_payload)
             logging.debug("Base64 image appended to messages.")
         
-        # Log the constructed payload
-        logging.debug("Sending request Payload to OpenAI LLM: %s", message_content)
+        # Construct full OpenAI request
+        request = OpenAIRequest(messages=payload)
+        logging.debug("Sending request Payload to OpenAI LLM: %s", payload)
         
         system_prompt = f"""
         Du bist ein Assistent für Mülltrennung in der Stadt Frankfurt am Main. 
@@ -67,10 +69,10 @@ def call_llm(prompt, image_file=None):
 
         # Send request to OpenAI
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=request.model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": message_content}
+                {"role": "user", "content": request.messages}
             ]
         )
         
@@ -78,8 +80,11 @@ def call_llm(prompt, image_file=None):
         result = response.choices[0].message.content
         logging.debug("LLM Response: %s", result)
         
-        return result
+        return OpenAIResponse(response=result)
         
+    except ValidationError as ve:
+        logging.error("Validation error: %s", ve.errors())
+        return OpenAIResponse(response=f"Validation Error: {ve.errors()}")
     except Exception as e:
         logging.error("Error in call_llm(): %s", str(e), exc_info=True)
-        return f"Error: {e}"
+        return OpenAIResponse(response=f"Error: {e}")
