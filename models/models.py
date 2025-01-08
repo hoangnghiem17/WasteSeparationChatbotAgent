@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Union
+from typing import List, Union, Any, Dict
 
 # Validates text input for OpenAI API
 class TextPayload(BaseModel):
@@ -11,10 +11,14 @@ class ImagePayload(BaseModel):
     type: str = Field("image_url", description="Sets text type of API payload as image")
     image_url: dict = Field(description="Defines the URL to image in dictionary", example={"url": "data:image/jpeg;base64,<encoded_string>"})
    
+class OpenAIPayload(BaseModel):
+    role: str
+    content: Union[str, List[Dict[str, Any]]]  # Accepts either a string or a list of dicts for images
+    
 # Validates OpenAI API call
 class OpenAIRequest(BaseModel):
     model: str = Field("gpt-4o-mini", description="GPT-model used for API call")
-    messages: List[Union[TextPayload, ImagePayload]] = Field(description="Combined API payload containing of text and image (optional)")
+    messages: List[OpenAIPayload] = Field(description="Combined API payload containing of text and image (optional)")
 
 # Validates OpenAI API response
 class OpenAIResponse(BaseModel):

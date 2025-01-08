@@ -1,3 +1,9 @@
+// Reset session on page load or refresh
+window.onload = function() {
+    fetch('/reset', { method: 'POST' });
+};
+
+// Existing event listeners for send button and enter key
 document.getElementById("send-btn").addEventListener("click", handleSend);
 document.getElementById("user-input").addEventListener("keypress", function (event) {
     if (event.key === "Enter") {
@@ -126,7 +132,7 @@ function displayImagePreview(file) {
         const img = document.createElement("img");
         img.src = event.target.result;
         img.alt = "Uploaded Image";
-        img.classList.add("uploaded-image");  // Optional CSS for styling
+        img.classList.add("uploaded-image");
 
         const messageDiv = document.createElement("div");
         messageDiv.classList.add("message", "user-message");

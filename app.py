@@ -1,36 +1,58 @@
 import logging
 import os
 from werkzeug.utils import secure_filename
-
-from flask import Flask, request, jsonify, render_template
+from datetime import timedelta
+from flask import Flask, request, jsonify, render_template, session
 from pydantic import ValidationError
 
 from services.llm import call_llm
-from models.models import OpenAIResponse
+from models.models import TextPayload, OpenAIResponse
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
+
+# Flask session configuration
+app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
+app.config['SESSION_COOKIE_NAME'] = 'wastechat_session'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True for HTTPS
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Prevents cross-site session retention
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)  # Timeout after 30 min inactivity
 
 # Define directory for uploaded pictures
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Root URL
+@app.before_request
+def manage_session():
+    session.permanent = False  # Session lasts until the browser/tab closes
+
+
 @app.route('/')
 def index():
     return render_template("index.html")
 
-# Handles POST requests from frontend when user submits query 
+
+@app.route('/reset', methods=['POST'])
+def reset_conversation():
+    session.pop('conversation', None)  # Clear conversation only
+    return jsonify({"response": "Conversation reset."})
+
+
 @app.route('/process_query', methods=['POST'])
 def process_query() -> OpenAIResponse:
     try:
         user_query = request.form.get("query", "")
         image_file = request.files.get("image")
-
-        # Checks if image was uploadded, if yes its uploaded to folder
-        image_path = None
+       
+        if 'conversation' not in session:
+            session['conversation'] = []
+            
+        user_query = TextPayload(text=user_query).model_dump()
+        session['conversation'].append({"role": "user", "content": user_query['text']})
+                            
         if image_file:
             try:
                 filename = secure_filename(image_file.filename)
@@ -40,14 +62,11 @@ def process_query() -> OpenAIResponse:
                 logging.error(f"Failed to upload image: {e}")
                 return jsonify({"error": "Failed to process the image."}), 500
         
-        # Call LLM with validated UserQuery
-        llm_response = call_llm(user_query, image_file)
+        llm_response = call_llm(session['conversation'], image_file)
         
-        # Validate response with Pydantic
-        validated_response = OpenAIResponse(response=llm_response.response)
+        session['conversation'].append({"role": "assistant", "content": llm_response.response})
         
-        # Return structured response
-        return jsonify(validated_response.model_dump())
+        return jsonify({"response": llm_response.response})
     
     except ValidationError as ve:
         logging.error(f"Validation error: {ve.errors()}")
@@ -55,6 +74,7 @@ def process_query() -> OpenAIResponse:
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
         return jsonify({"error": "An unexpected error occurred."}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)

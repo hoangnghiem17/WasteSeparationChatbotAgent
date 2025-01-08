@@ -4,7 +4,7 @@ import logging
 from PIL import Image
 import io
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def encode_image(image_file):
     """
