@@ -20,7 +20,7 @@ def call_llm(conversation_history: list, image_file: FileStorage =None) -> OpenA
     Makes API call to OpenAI multimodal LLM with optional image input.
     
     Args:
-        user_query (str): User's text input 
+        conversation_history (List[dict]): List of dictionaries with role-content pairs of conversation history 
         image_file (FileStorage, optional): Uploaded image as FileStorage object
         
     Returns:
@@ -51,7 +51,7 @@ def call_llm(conversation_history: list, image_file: FileStorage =None) -> OpenA
         if image_file:
             base64_image = encode_image(image_file)
 
-        # Construct message payload from conversation history
+        # Connverts conversation history into list of OpenAIPayload objects
         payload = [
             OpenAIPayload(role=msg['role'], content=msg['content']).model_dump()
             for msg in conversation_history
@@ -78,13 +78,14 @@ def call_llm(conversation_history: list, image_file: FileStorage =None) -> OpenA
             )
             logging.info("Base64 image appended as ImagePayload.")
                 
-        # Send and send request to OpenAI
+        # Send request to OpenAI API
         openai_request = OpenAIRequest(
             model="gpt-4o-mini",
             messages=payload
         )
         logging.info("Sending request Payload to OpenAI LLM: %s", payload)
         
+        # Extract and return response
         response = client.chat.completions.create(**openai_request.model_dump())
         logging.info("OpenAI API call successful. Extracting response.")
         

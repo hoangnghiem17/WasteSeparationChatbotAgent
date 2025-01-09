@@ -21,7 +21,7 @@ def encode_image(image_file):
         image = Image.open(image_file)
         logging.info(f"Image opened successfully: {image.format}, Size: {image.size}, Mode: {image.mode}")
         
-        # Saves image to im-memory buffer and encodes raw byte image data to base64
+        # Saves image to in-memory buffer and encodes raw byte image data to base64
         img_buffer = io.BytesIO()
         image.save(img_buffer, format=image.format)
         base64_image = base64.b64encode(img_buffer.getvalue()).decode("utf-8")

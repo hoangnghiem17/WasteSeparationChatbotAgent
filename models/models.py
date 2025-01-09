@@ -1,9 +1,9 @@
 from pydantic import BaseModel, Field
 from typing import List, Union, Any, Dict
 
-# Validates text input for OpenAI API
+# Validates text input from user query
 class TextPayload(BaseModel):
-    type: str = Field("text", description="Sets text type of API payload as text")
+    type: str = Field("text", description="Sets query type as text")
     text: str = Field(description="User text input")
     
 # Validates images for OpenAI API
