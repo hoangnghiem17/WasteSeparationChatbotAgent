@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify, render_template, session
 from pydantic import ValidationError
 
 from services.llm import call_llm
+from services.history import get_conversation, add_message
 from models.models import TextPayload, OpenAIResponse
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -45,14 +46,17 @@ def reset_conversation():
 def process_query() -> OpenAIResponse:
     try:
         user_query = request.form.get("query", "")
+        user_query = TextPayload(text=user_query).model_dump()
         image_file = request.files.get("image")
        
+       # Initialize conversation if not present
         if 'conversation' not in session:
             session['conversation'] = []
-            
-        user_query = TextPayload(text=user_query).model_dump()
-        session['conversation'].append({"role": "user", "content": user_query['text']})
-                            
+        
+        # Add user message to conversation history
+        add_message("user", user_query["text"])
+        
+        # Handle image file if provided                    
         if image_file:
             try:
                 filename = secure_filename(image_file.filename)
@@ -62,9 +66,10 @@ def process_query() -> OpenAIResponse:
                 logging.error(f"Failed to upload image: {e}")
                 return jsonify({"error": "Failed to process the image."}), 500
         
-        llm_response = call_llm(session['conversation'], image_file)
+        llm_response = call_llm(get_conversation(), image_file)
         
-        session['conversation'].append({"role": "assistant", "content": llm_response.response})
+        # Add assistant's response to the conversation history
+        add_message('assistant', llm_response.response)
         
         return jsonify({"response": llm_response.response})
     
