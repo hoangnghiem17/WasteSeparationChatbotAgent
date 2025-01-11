@@ -29,11 +29,7 @@ def call_llm(conversation_history: list, image_file: FileStorage =None, system_p
     """
     try:
         logging.info("call_llm() invoked with conversation history.")
-        
-        # Default system prompt if not provided
-        if not system_prompt:
-            system_prompt = "Antworte immer mit 3 - FALLBACK."
-        
+               
         # Encode image if provided
         base64_image = None
         if image_file:
