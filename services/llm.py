@@ -29,10 +29,15 @@ def call_llm(conversation_history: list, image_file: FileStorage =None, system_p
     """
     try:
         logging.info("call_llm() invoked with conversation history.")
-               
-        # Combine context with the system prompt
+        
+        # Structure the system prompt: guidance first, context second
         if context:
-            system_prompt = f"{context}\n\n{system_prompt}" if system_prompt else context
+            system_prompt = f"""
+            {system_prompt.strip()}
+            
+            Nutze den folgenden Kontext um die Anfrage zu beantworten, falls du ihn als hilfreich ansiehst:
+            {context.strip()}
+            """
             
         # Encode image if provided
         base64_image = None

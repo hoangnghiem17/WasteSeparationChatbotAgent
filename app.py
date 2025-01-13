@@ -58,19 +58,21 @@ def process_query() -> OpenAIResponse:
         # Add user message to conversation history
         add_message("user", user_query["text"])
         
-        # Get the system prompt for the query
-        system_prompt = match_prompt_to_query(user_query["text"])
+        # Get the prompt and use_rag flag
+        prompt_data = match_prompt_to_query(user_query["text"])
+        system_prompt = prompt_data["prompt"]
+        use_rag = prompt_data.get("use_rag", False)
         
-        # Retrieve context for RAG (specific document)
+        # Retrieve context only if use_rag is True
         context = ""
-        specific_document_path = "rag_docs/FES_waskommtwohinein.pdf"  # Path to the specific document
-
-        if os.path.isfile(specific_document_path):  # Check if the file exists
-            context_chunks = process_document(specific_document_path, user_query["text"])
-            if context_chunks:
-                context = "\n\n".join(context_chunks)  # Combine retrieved chunks into context
-        else:
-            logging.warning(f"Document not found: {specific_document_path}")
+        if use_rag:
+            specific_document_path = "rag_docs/FES_waskommtwohinein.pdf"
+            if os.path.isfile(specific_document_path):
+                context_chunks = process_document(specific_document_path, user_query["text"])
+                if context_chunks:
+                    context = "\n\n".join(context_chunks)
+            else:
+                logging.warning(f"Document not found: {specific_document_path}")
                     
         # Handle image file if provided                    
         if image_file:
