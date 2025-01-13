@@ -15,7 +15,7 @@ load_dotenv()
 
 client = openai.Client(api_key=os.getenv("OPENAI_API_KEY"))
 
-def call_llm(conversation_history: list, image_file: FileStorage =None, system_prompt: str = None) -> OpenAIResponse:
+def call_llm(conversation_history: list, image_file: FileStorage =None, system_prompt: str = None, context: str = "") -> OpenAIResponse:
     """
     Makes API call to OpenAI multimodal LLM with optional image input.
     
@@ -23,13 +23,17 @@ def call_llm(conversation_history: list, image_file: FileStorage =None, system_p
         conversation_history (List[dict]): List of dictionaries with role-content pairs of conversation history 
         image_file (FileStorage, optional): Uploaded image as FileStorage object
         system_prompt (str, optional): Custom system prompt to use for the API call.
-        
+        context (str, optional): Retrieved context to include in the system prompt.
     Returns:
         OpenAIResponse: Response from OpenAI LLM as validated response model.
     """
     try:
         logging.info("call_llm() invoked with conversation history.")
                
+        # Combine context with the system prompt
+        if context:
+            system_prompt = f"{context}\n\n{system_prompt}" if system_prompt else context
+            
         # Encode image if provided
         base64_image = None
         if image_file:
@@ -42,7 +46,8 @@ def call_llm(conversation_history: list, image_file: FileStorage =None, system_p
         ]
 
         # Prepend system prompt to the payload
-        payload.insert(0, OpenAIPayload(role="system", content=system_prompt).model_dump())
+        if system_prompt:
+            payload.insert(0, OpenAIPayload(role="system", content=system_prompt).model_dump())
         
         # Append image payload if image is uploaded
         if base64_image:

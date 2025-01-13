@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from services.llm import call_llm
 from services.history import get_conversation, add_message
 from services.prompt import match_prompt_to_query
+from services.document import process_document
 from models.models import TextPayload, OpenAIResponse
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -60,6 +61,17 @@ def process_query() -> OpenAIResponse:
         # Get the system prompt for the query
         system_prompt = match_prompt_to_query(user_query["text"])
         
+        # Retrieve context for RAG (specific document)
+        context = ""
+        specific_document_path = "rag_docs/FES_waskommtwohinein.pdf"  # Path to the specific document
+
+        if os.path.isfile(specific_document_path):  # Check if the file exists
+            context_chunks = process_document(specific_document_path, user_query["text"])
+            if context_chunks:
+                context = "\n\n".join(context_chunks)  # Combine retrieved chunks into context
+        else:
+            logging.warning(f"Document not found: {specific_document_path}")
+                    
         # Handle image file if provided                    
         if image_file:
             try:
@@ -70,7 +82,13 @@ def process_query() -> OpenAIResponse:
                 logging.error(f"Failed to upload image: {e}")
                 return jsonify({"error": "Failed to process the image."}), 500
         
-        llm_response = call_llm(get_conversation(), image_file, system_prompt=system_prompt)
+        # Call LLM with the retrieved context included
+        llm_response = call_llm(
+            conversation_history=get_conversation(),
+            image_file=image_file,
+            system_prompt=system_prompt,
+            context=context.strip()  # Strip extra spaces or newlines
+        )
         
         # Add assistant's response to the conversation history
         add_message('assistant', llm_response.response)

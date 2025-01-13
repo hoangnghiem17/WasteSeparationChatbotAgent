@@ -2,11 +2,14 @@ from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai.embeddings import OpenAIEmbeddings
+import openai
 import re
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+client = openai.Client(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Function to clean and normalize text
 def clean_text(text):
@@ -36,21 +39,22 @@ def chunk_text(text, chunk_size=700, chunk_overlap=140):
     )
     return splitter.split_text(text)
 
-# Function to investigate the FAISS vector store
-def investigate_vector_store(vector_store):
-    # Check number of vectors in the index
-    print(f"\nNumber of vectors in the FAISS index: {vector_store.index.ntotal}\n")
+# Function to search for similar chunks in the vector store
+def search_similar_chunks(query, vector_store, k=3):
+    return vector_store.similarity_search(query, k=k)
 
-    # Access the internal dictionary of the docstore
-    docs = vector_store.docstore._dict  # Accessing the private _dict attribute
-
-    # Print the contents of the vector store
-    print("Contents of the vector store:")
-    for doc_id, document in docs.items():
-        print(f"Document ID: {doc_id}")
-        print(f"Content Preview: {document.page_content[:100]}...")  # Preview first 100 characters
-        print(f"Metadata: {document.metadata}")
-        print("-" * 40)
+# Function to construct a prompt with context
+def construct_prompt(query, context_chunks):
+    context = "\n\n".join(context_chunks)
+    return f"""
+    You are an assistant specializing in answering questions based on the following context:
+    
+    {context}
+    
+    User's Question: {query}
+    
+    Provide a detailed and accurate answer using the context above.
+    """
 
 # Main script
 if __name__ == "__main__":
@@ -66,20 +70,40 @@ if __name__ == "__main__":
     # Chunk the cleaned text
     chunks = chunk_text(cleaned_text)
 
-    # Print the chunks with clear separators
-    for i, chunk in enumerate(chunks):
-        print(f"Chunk {i + 1}:\n{'='*40}\n{chunk}\n")
-
     # Initialize the OpenAI embeddings model
     embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
 
     # Create a FAISS vector store
     vector_store = FAISS.from_texts(chunks, embedding=embeddings)
 
-    # Print confirmation of storage
-    print("\nVector store created with the following chunks:\n")
-    for i, chunk in enumerate(chunks):
-        print(f"Stored Chunk {i + 1}: {chunk[:100]}...\n")
-
     # Investigate the vector store
-    investigate_vector_store(vector_store)
+    print("Investigating the vector store...")
+    print(f"Number of vectors: {vector_store.index.ntotal}")
+
+    # User query
+    user_query = "What should I do with old batteries?"
+
+    # Perform similarity search
+    print("\nPerforming similarity search...")
+    similar_chunks = search_similar_chunks(user_query, vector_store)
+    context_chunks = [chunk.page_content for chunk in similar_chunks]
+
+    # Construct the prompt
+    print("\nConstructing prompt...")
+    prompt = construct_prompt(user_query, context_chunks)
+    print(f"Generated Prompt:\n{prompt}\n")
+
+    # Call OpenAI API with the constructed prompt
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=200,
+        temperature=0.7
+    )
+
+    # Print the generated answer
+    print("\nGenerated Answer:")
+    print(response.choices[0].message.content)

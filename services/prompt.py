@@ -79,7 +79,7 @@ def classify_query(user_query: str) -> str:
         categories = "', '".join(prompts.keys())
         
         # Construct the system prompt dynamically
-        system_prompt = f"""
+        query_classification_prompt = f"""
         Du bist ein Experte in der Klassifizierung von Benutzeranfragen über Recycling in Frankfurt am Main. 
         Klassifiziere die Anfrage in einer dieser Kategorien basierend auf der Absicht. Antworte nur mit einen dieser Stichwörter: '{categories}'. 
         Benutze Textverständnis, Schlüsselwörter und Kontext um die passende Kategorie zu finden.
@@ -92,7 +92,7 @@ def classify_query(user_query: str) -> str:
             messages=[
                 OpenAIPayload(
                     role="system",
-                    content=system_prompt.strip()
+                    content=query_classification_prompt.strip()
                 ).model_dump(),
                 OpenAIPayload(
                     role="user",
