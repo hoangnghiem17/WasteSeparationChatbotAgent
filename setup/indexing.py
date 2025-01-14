@@ -135,7 +135,7 @@ pdf_output_dir = "rag_docs/doc_per_category_pdf"
 text_output_dir = "rag_docs/doc_per_category_txt"
 faiss_store_path = "faiss_store"
 
-# Split the PDF, extract text, create FAISS vector store, and investigate
+# Split the PDF into section-specific PDFs, extract text from PDF using OCR, chunk and embed the text in FAISS vector store
 split_document_by_section(file_path, pdf_output_dir, sections)
 extract_text_with_tesseract(pdf_output_dir, text_output_dir)
 create_faiss_vector_store(text_output_dir, faiss_store_path)

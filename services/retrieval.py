@@ -32,9 +32,9 @@ def retrieve_similar_chunks(query: str, faiss_store_path: str, rag_document: lis
             allow_dangerous_deserialization=True  # Ensure you trust the source of the data
         )
 
-        # Filter vector store documents by the specified rag_document
+        # Filter vector store documents that contain rag_document type
         filtered_docs = [
-            doc for doc_id, doc in vector_store.docstore._dict.items()  # Access internal docstore
+            doc for doc_id, doc in vector_store.docstore._dict.items()  # Access internal docstore (dictionary holding all documents)
             if doc.metadata.get("source") in rag_document
         ]
         if not filtered_docs:
@@ -48,7 +48,7 @@ def retrieve_similar_chunks(query: str, faiss_store_path: str, rag_document: lis
             logging.debug(f"Filtered Document Metadata: {doc.metadata}")
 
         # Create a temporary vector store for the filtered documents
-        embeddings = vector_store.embeddings  # Correctly access the embeddings attribute
+        embeddings = vector_store.embeddings  
         temp_vector_store = FAISS.from_documents(filtered_docs, embeddings)
         logging.info("Temporary vector store successfully created.")
 

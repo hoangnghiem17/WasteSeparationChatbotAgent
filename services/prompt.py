@@ -96,7 +96,6 @@ prompts = {
     }
 }
 
-
 def classify_query(user_query: str) -> str:
     """
     Classifies the user query into a predefined category using GPT-4o-mini.
