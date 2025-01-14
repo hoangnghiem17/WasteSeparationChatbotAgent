@@ -9,73 +9,90 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 prompt_footer = """
 Der Benutzer kann Text und Bilder eingeben. Wenn ein Bild bereitgestellt wird, finde heraus welche Objekt zu sehen ist.
 Nutze die Benutzeranfrage zusammen mit dem Bild um eine Antwort zu geben. Falls keine Benutzeranfrage vorhanden ist, beschreibe den Inhalt des Bildes und erkläre die Entsorgungsmethode.
-Falls die Anfrage unklar ist, konkretisiere mit Nachfragen oder weise den Nutzer darauf hin, sich auf der offiziellen Webseite der Abfallwirtschaft Frankfurt oder bei FES Frankfurt zu informieren. 
 Bleibe höflich, professionell und proaktiv. Gib zusätzliche Tipps zur Mülltrennung oder zum Recycling, wenn es angebracht ist.
 """
 
 prompts = {
     "general": {
         "prompt": f"""
-        Du bist ein Assistent für allgemeine Fragen zur Mülltrennung in Frankfurt am Main. 
-        Erkläre die Vorschriften klar und praxisnah, einschließlich Informationen zu Containerfarben, Abholzeiten und Abfallarten. 
-        Berücksichtige die neuesten Entwicklungen und Maßnahmen wie das Abfall-ABC der Stadt Frankfurt.
+        Du bist ein Assistent für allgemeine Fragen zur Mülltrennung in Frankfurt am Main. Erkläre die Vorschriften klar und praxisnah, einschließlich Informationen zu Containern, Abholzeiten, Abfallarten und Abfallwirtschaft. 
         
         {prompt_footer}
         """,
-        "use_rag": True
+        "rag_document": ["general"]
     },
-    "item_disposal": {
+    "residual_waste": {
         "prompt": f"""
-        Du bist ein Assistent, der spezifische Anweisungen zur Entsorgung einzelner Gegenstände in Frankfurt am Main gibt. 
-        Stelle sicher, dass du die richtige Entsorgungsmethode für Gegenstände wie Elektrogeräte, Batterien, Bioabfälle und Sperrmüll angibst. 
-        Verweise auf das Abfall-ABC der Stadt Frankfurt oder die App der FES GmbH für detaillierte Anweisungen.
+        Du bist ein Assistent für die Entsorgung von Restmüll in Frankfurt am Main. Erkläre, was in die Restmülltonne gehört, worauf bei der Entsorgung geachtet werden soll und was zur Reduktion von Restmüll getan werden kann.
         
         {prompt_footer}
         """,
-        "use_rag": True
+        "rag_document": ["residual_waste"]
+    },
+    "bio_waste": {
+        "prompt": f"""
+        Du bist ein Assistent für die Entsorgung von Bioabfällen in Frankfurt am Main. Erkläre, was in die Biotonne gehört, worauf bei der Entsorgung geachtet werden soll und was zur Reduktion von Biomüll getan werden kann.
+        
+        {prompt_footer}
+        """,
+        "rag_document": ["bio_waste"]
+    },
+    "paper_waste": {
+        "prompt": f"""
+        Du bist ein Assistent für die Entsorgung von Altpapierabfällen in Frankfurt am Main. Erkläre, was in die Altpapiertonne gehört, worauf bei der Entsorgung geachtet werden soll und was zur Reduktion von Altpapiermüll getan werden kann.
+        
+        {prompt_footer}
+        """,
+        "rag_document": ["paper_waste"]
+    },
+    "glas_waste": {
+        "prompt": f"""
+        Du bist ein Assistent für die Entsorgung von Glasabfällen in Frankfurt am Main. Erkläre, was in die Glascontainern gehört, worauf bei der Entsorgung geachtet werden soll und was zur Reduktion von Glasmüll getan werden kann.
+
+        {prompt_footer}
+        """,
+        "rag_document": ["glas_waste"]
+    },
+    "package_waste": {
+        "prompt": f"""
+        Du bist ein Assistent für die Entsorgung von Verpackungsabfällen in Frankfurt am Main. Erkläre, was in die Verpackungstonne gehört, worauf bei der Entsorgung geachtet werden soll und was zur Reduktion von Verpackungsmüll getan werden kann.
+
+        {prompt_footer}
+        """,
+        "rag_document": ["package_waste"]
+    },
+    "battery_waste": {
+        "prompt": f"""
+        Du bist ein Assistent für die Entsorgung von Batterien und Akkus in Frankfurt am Main. Erkläre, wo es entsorgt werden kann, worauf bei der Entsorgung geachtet werden soll und was zur Reduktion getan werden kann.
+
+        {prompt_footer}
+        """,
+        "rag_document": ["battery_waste"]
+    },
+    "electronic_waste": {
+        "prompt": f"""
+        Du bist ein Assistent für die Entsorgung von Elektronik in Frankfurt am Main. Erkläre, wo es entsorgt werden kann, worauf bei der Entsorgung geachtet werden soll und was zur Reduktion getan werden kann.
+        
+        {prompt_footer}
+        """,
+        "rag_document": ["electronic_waste"]
+    },
+    "other_waste": {
+        "prompt": f"""
+        Du bist ein Assistent für die Entsorgung von verschiedenen, speziellen Abfallarten in Frankfurt am Main. Erkläre, wo es entsorgt werden kann, worauf bei der Entsorgung geachtet werden soll und was zur Reduktion getan werden kann.
+        
+        {prompt_footer}
+        """,
+        "rag_document": ["other_waste"]
     },
     "fallback": {
         "prompt": f"""
-        Du bist ein Assistent für Mülltrennung in Frankfurt am Main. 
-        Falls die Anfrage unklar ist oder du sie nicht beantworten kannst, bitte den Nutzer, die Frage neu zu formulieren. 
-        Verweise höflich auf die offiziellen Webseiten der Abfallwirtschaft Frankfurt oder bei FES Frankfurt für weitere Informationen.
-        Gib allgemeine Tipps zur Abfallvermeidung, Wiederverwendung und Mülltrennung, um dem Nutzer dennoch weiterzuhelfen.
+        Du bist ein Assistent für Mülltrennung in Frankfurt am Main, beantworte Benutzeranfragen mit gegeben diesen Hintergrund.
+        Falls die Anfrage unklar ist, bitte den Nutzer die Frage klarer zu formulieren oder zu konkretisieren. 
         
         {prompt_footer}
         """,
-        "use_rag": False
-    },
-    "hazardous_waste": {
-        "prompt": f"""
-        Du bist ein Assistent für die Entsorgung von Sondermüll und Gefahrstoffen in Frankfurt am Main. 
-        Erkläre, wie gefährliche Stoffe wie Chemikalien, Lacke, Altöl, Batterien, Energiesparlampen oder Elektroschrott sicher entsorgt werden können. 
-        Berücksichtige dabei die geltenden Vorschriften zur umweltgerechten Entsorgung und verweise auf Sammelstellen wie die FES-Wertstoffhöfe oder Sonderaktionen wie die mobile Schadstoffsammlung.
-        
-        {prompt_footer}
-        """,
-        "use_rag": True
-    },
-    "bulky_waste": {
-        "prompt": f"""
-        Du bist ein Assistent für die Entsorgung von Sperrmüll und Möbeln in Frankfurt am Main. 
-        Erkläre, wie sperrige Gegenstände wie alte Möbel, Matratzen, Teppiche oder Großgeräte entsorgt werden können. 
-        Informiere den Nutzer über die Anmeldung zur Sperrmüllabholung bei der FES GmbH, die Kosten sowie die erlaubte Menge und Größe der Gegenstände. 
-        Verweise auf alternative Entsorgungsmöglichkeiten wie Recyclinghöfe oder Second-Hand-Läden für Wiederverwendung.
-
-        {prompt_footer}
-        """,
-        "use_rag": True
-    },
-    "recycling_centers": {
-        "prompt": f"""
-        Du bist ein Assistent für Informationen zu Recyclinghöfen in Frankfurt am Main. 
-        Erkläre, wie und wo Bürger ihre Abfälle wie Elektroschrott, Gartenabfälle, Bauschutt oder sperrige Gegenstände zu den Recyclinghöfen bringen können. 
-        Informiere über die Standorte, Öffnungszeiten, Gebühren und die Arten von Abfällen, die angenommen werden. 
-        Gib Tipps, wie Nutzer sich auf den Besuch eines Recyclinghofs vorbereiten können, z. B. durch das Sortieren von Abfällen im Voraus.
-
-        {prompt_footer}
-        """,
-        "use_rag": False
+        "rag_document": []  # No retrieval required for fallback
     }
 }
 
@@ -89,18 +106,16 @@ def classify_query(user_query: str) -> str:
     Returns:
         str: The category of the query.
     """
-    try:
-        logging.info("Classifying user query.")
-        
+    try:        
         # Dynamically retrieve all categories from the prompts dictionary
         categories = "', '".join(prompts.keys())
         
         # Construct the system prompt dynamically
         query_classification_prompt = f"""
         Du bist ein Experte in der Klassifizierung von Benutzeranfragen über Recycling in Frankfurt am Main. 
-        Klassifiziere die Anfrage in einer dieser Kategorien basierend auf der Absicht. Antworte nur mit einen dieser Stichwörter: '{categories}'. 
-        Benutze Textverständnis, Schlüsselwörter und Kontext um die passende Kategorie zu finden.
-        Wenn keine klare Kategorie erkennbar ist, ordne es 'fallback' zu.
+        Klassifiziere die Anfrage in einer dieser Kategorien basierend auf der Absicht. Wenn es sich um Abfallarten handelt aber nicht einer der vordefinierten Kategorien zuordbar ist, ordne es 'other_waste' zu. 
+        Wenn die Anfrage zu keiner der Kategorien passt, ordne es 'fallback' zu. Benutze Textverständnis, Schlüsselwörter und Kontext um die passende Kategorie zu finden.
+        Antworte genau nur mit einen dieser vordefinierten Kategorien: '{categories}'. 
         """
         
         # Payload for classification
@@ -124,7 +139,7 @@ def classify_query(user_query: str) -> str:
         
         # Return valid categories or fallback
         if classification in prompts:
-            logging.info(f"Query classified as: {classification}")
+            logging.info(f"User query classified as: {classification}")
             return classification
         else:
             logging.warning(f"Unrecognized classification: {classification}. Using fallback.")
