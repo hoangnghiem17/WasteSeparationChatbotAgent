@@ -1,12 +1,12 @@
 import sqlite3
 import requests
 
-# Function to geocode an address using Nominatim with a custom User-Agent
+# Function to Geocode the input user address
 def geocode_address(address):
     """
-    Geocode an address using Nominatim API with a custom User-Agent.
+    Geocode a user's address using the Nominatim API.
 
-    :param address: Address string to geocode.
+    :param address: User's address as a string.
     :return: Tuple of (latitude, longitude) or (None, None) if geocoding fails.
     """
     url = "https://nominatim.openstreetmap.org/search"
@@ -18,87 +18,85 @@ def geocode_address(address):
         'format': 'json',
         'limit': 1
     }
+    
     try:
         response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()  # Raise an exception for HTTP errors
+        response.raise_for_status()
         data = response.json()
         if data:
             return float(data[0]['lat']), float(data[0]['lon'])
-        return None, None
-    except requests.exceptions.HTTPError as http_err:
-        print(f"HTTP error occurred: {http_err}")
-    except Exception as err:
-        print(f"Other error occurred: {err}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error geocoding address '{address}': {e}")
+        
     return None, None
 
-# Function to calculate the route, distance, and duration using OSRM
-def calculate_route(user_coords, facility_coords):
+# Function to calculate the route, distance and duration between user address and facilities using OSRM
+def calculate_route(from_coords, to_coords):
     """
     Calculate the route, distance, and duration between two coordinates using OSRM.
 
-    :param user_coords: Tuple (latitude, longitude) for the user's location.
-    :param facility_coords: Tuple (latitude, longitude) for the facility location.
+    :param from_coords: Tuple (latitude, longitude) for the starting point.
+    :param to_coords: Tuple (latitude, longitude) for the destination.
     :return: Distance in kilometers, duration in minutes, or (None, None) if routing fails.
     """
-    osrm_url = "http://router.project-osrm.org/route/v1/driving"
-    params = {
-        "coordinates": f"{user_coords[1]},{user_coords[0]};{facility_coords[1]},{facility_coords[0]}",
-        "overview": "false",
-        "steps": "false"
-    }
+    osrm_url = f"http://router.project-osrm.org/route/v1/driving/{from_coords[1]},{from_coords[0]};{to_coords[1]},{to_coords[0]}"
+    
     try:
-        response = requests.get(f"{osrm_url}/{params['coordinates']}", params={"overview": "false"})
+        response = requests.get(osrm_url, params={"overview": "false"})
         response.raise_for_status()
-        data = response.json()
-        if data.get("routes"):
-            route = data["routes"][0]
-            distance_km = route["distance"] / 1000  # Convert meters to kilometers
-            duration_min = route["duration"] / 60  # Convert seconds to minutes
+        route_data = response.json()
+        if route_data.get("routes"):
+            route = route_data["routes"][0]
+            distance_km = route["distance"] / 1000  
+            duration_min = route["duration"] / 60  
             return distance_km, duration_min
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching route: {e}")
+        print(f"Error occurred during route calculation: {e}")
+        
     return None, None
 
 # Function to find the closest facility using the SQLite3 database
-def find_closest_facility(user_address, db_path):
+def find_closest_facility(user_coords, db_path):
     """
-    Find the closest recycling facility to a user address.
+    Find the closest recycling facility to a user location.
 
-    :param user_address: User's address as a string.
+    :param user_coords: Tuple (latitude, longitude) for the user's geolocation.
     :param db_path: Path to the SQLite3 database file.
-    :return: Closest facility record with distance and duration.
+    :return: Closest facility record with distance, duration, and opening time.
     """
-    user_coords = geocode_address(user_address)
-    if user_coords == (None, None):
-        return "Invalid address. Unable to geocode."
-
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Fetch all facilities from the database
-    cursor.execute("SELECT name, street, zip, district FROM recyclinghof")
+    # Fetch all facilities along with their geolocations and opening times from the database
+    cursor.execute("SELECT name, street, zip, district, lat, long, opening_time FROM recyclinghof")
     facilities = cursor.fetchall()
 
     closest_facility = None
     min_distance = float('inf')
 
     for facility in facilities:
-        facility_name, street, zip_code, district = facility
-        facility_address = f"{street}, {zip_code} Frankfurt am Main"
-        facility_coords = geocode_address(facility_address)
+        (
+            facility_name,
+            street,
+            zip_code,
+            district,
+            facility_lat,
+            facility_long,
+            opening_time,
+        ) = facility
+        to_coords = (facility_lat, facility_long)
 
-        if facility_coords == (None, None):
-            continue
-
-        distance, duration = calculate_route(user_coords, facility_coords)
+        # Calculate the route distance and duration
+        distance, duration = calculate_route(user_coords, to_coords)
         if distance is not None and distance < min_distance:
             min_distance = distance
             closest_facility = {
                 "name": facility_name,
-                "address": facility_address,
+                "address": f"{street}, {zip_code} Frankfurt am Main",
                 "district": district,
                 "distance": distance,
-                "duration": duration
+                "duration": duration,
+                "opening_time": opening_time,
             }
 
     conn.close()
@@ -106,14 +104,21 @@ def find_closest_facility(user_address, db_path):
 
 # Example usage
 if __name__ == "__main__":
-    db_path = "database/waste_separation_frankfurt.db"  
+    db_path = "database/waste_separation_frankfurt.db"
     user_address = "Bergerstraße 148, 60385 Frankfurt am Main"
 
-    closest_facility = find_closest_facility(user_address, db_path)
-    if closest_facility:
-        print(f"The closest facility is '{closest_facility['name']}' at {closest_facility['address']} "
-              f"in the district '{closest_facility['district']}'.")
-        print(f"Distance: {closest_facility['distance']:.2f} km")
-        print(f"Travel time: {closest_facility['duration']:.2f} minutes")
+    # Geocode the user's address
+    user_coords = geocode_address(user_address)
+    if user_coords == (None, None):
+        print("Invalid user address. Unable to geocode.")
     else:
-        print("No facilities found.")
+        # Find the closest facility
+        closest_facility = find_closest_facility(user_coords, db_path)
+        if closest_facility:
+            print(f"The closest facility is '{closest_facility['name']}' at {closest_facility['address']} "
+                  f"in the district '{closest_facility['district']}'.")
+            print(f"Distance: {closest_facility['distance']:.2f} km")
+            print(f"Travel time: {closest_facility['duration']:.2f} minutes")
+            print(f"Opening hours: {closest_facility['opening_time']}")
+        else:
+            print("No facilities found.")
