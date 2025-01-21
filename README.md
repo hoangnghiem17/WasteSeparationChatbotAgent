@@ -1,1 +1,1 @@
-# WasteSeparationChatbotLLM
+# WasteSeparationChatbotAgent
