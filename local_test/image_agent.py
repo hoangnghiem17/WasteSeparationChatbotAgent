@@ -3,9 +3,12 @@ import os
 import logging
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage
+from langchain.prompts import PromptTemplate
+from langchain.agents import create_tool_calling_agent
 from langchain_core.tools import tool
-from typing import List, Optional, Union, Dict
+from typing import List, Union, Optional
+from pydantic import BaseModel, Field
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -13,117 +16,128 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Load environment variables
 load_dotenv()
 
-# Initialize the model
-model = ChatOpenAI(model="gpt-4o-mini", openai_api_key=os.getenv("OPENAI_API_KEY"))
+# Define AgentState - representing state of agent during execution
+class AgentState(BaseModel):
+    input: str
+    chat_history: List[BaseMessage] = Field(default_factory=list)
+    agent_outcome: Optional[Union[str, dict]] = None
+    intermediate_steps: List = Field(default_factory=list)
 
-# General system prompt to handle mixed input types
-system_prompt = SystemMessage(
-    content=(
-        "You are an advanced assistant capable of handling user queries with text, images, or both. "
-        "For text inputs, provide a detailed, context-aware response. "
-        "For image inputs, describe the image or answer specific visual questions. "
-        "For combinations, integrate both to deliver a comprehensive reply."
+# Initialize the model
+llm = ChatOpenAI(model="gpt-4o-mini", openai_api_key=os.getenv("OPENAI_API_KEY"))
+
+# Define the system prompt
+system_prompt = PromptTemplate(
+    input_variables=["input", "chat_history", "agent_scratchpad"],
+    template=(
+        """
+        You are an advanced assistant capable of performing mathematical operations, such as adding two numbers. 
+        You can also handle user queries with text and images.
+        
+        Input: {input}
+        Chat History: {chat_history}
+        Reasoning and Actions: {agent_scratchpad}
+        """
     )
 )
 
-# Define a tool for image description
+# Define a tool for adding two numbers
 @tool
-def describe_image(description: str) -> None:
-    """Provide a description of the given image."""
-    pass
+def add(a: float, b: float) -> float:
+    """Takes in two numbers and adds them."""
+    return a + b
 
-# Bind the tool to the model
-model_with_tools = model.bind_tools([describe_image])
+# Create the tool-calling agent
+toolkit = [add]
+tool_runnable = create_tool_calling_agent(llm, toolkit, system_prompt)
+logging.info("Tool calling agent created.")
 
-# Function to encode images as base64
-def create_message(
-    text: Optional[str] = None,
-    image_path: Optional[str] = None
-) -> List[Dict]:
+# Encode images into base64-string for LLM input
+def encode_image(image_path: str) -> str:
+    if not os.path.isfile(image_path):
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
+# Initialize agent state instance using provided user input
+def initialize_state(user_input: str) -> AgentState:
+    return AgentState(input=user_input)
+
+# Iterates through agent_outcome actions and manually invokes tools
+def execute_tools(state: AgentState) -> AgentState:
+    agent_actions = state.agent_outcome
+    if not isinstance(agent_actions, list):
+        agent_actions = [agent_actions]
+
+    intermediate_steps = []
+    for action in agent_actions:
+        if hasattr(action, "tool"):
+            tool_name = action.tool
+            tool = next((t for t in toolkit if t.name == tool_name), None)
+            if tool:
+                logging.info(f"Executing tool: {tool_name} with input: {action.tool_input}")
+                tool_result = tool.invoke(input=action.tool_input)
+                logging.info(f"Tool result: {tool_result}")
+                intermediate_steps.append((action, str(tool_result)))
+            else:
+                logging.warning(f"Tool '{tool_name}' not found.")
+    state.intermediate_steps = intermediate_steps
+    return state
+
+# Run the tool agent by combining LangChain's tool_runnable agent with manual tool execution and updates agent state
+def run_tool_agent(state: AgentState) -> AgentState:
     """
-    Create a structured message for the model, handling text, images, or both.
-    """
-    content = []
-    if text:
-        logging.info(f"Adding text to message: {text}")
-        content.append({"type": "text", "text": text})
-    if image_path:
-        logging.info(f"Adding image to message from path: {image_path}")
-        try:
-            with open(image_path, "rb") as image_file:
-                image_data = base64.b64encode(image_file.read()).decode("utf-8")
-            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}})
-            logging.debug("Image added successfully")
-        except FileNotFoundError:
-            logging.error(f"Image file not found: {image_path}")
-            raise
-        except Exception as e:
-            logging.error(f"Error encoding image: {e}")
-            raise
-    return content
+    Executes the tool-calling agent and invokes tools manually for actions.
 
+    Args:
+        state (AgentState): The agent's state containing input and actions.
 
-def process_input(
-    text: Optional[str] = None,
-    image_path: Optional[str] = None
-) -> str:
-    """
-    Process the user input (text, image, or both) and invoke the model.
+    Returns:
+        AgentState: Updated state with the agent's outcome and intermediate steps.
     """
     try:
-        # Validate input
-        if not text and not image_path:
-            logging.warning("No input provided. Returning error message.")
-            return "Please provide either text, an image, or both."
+        # Invoke the LangChain agent
+        state_dict = state.model_dump()
+        agent_outcome = tool_runnable.invoke(state_dict)
+        state.agent_outcome = agent_outcome
 
-        # Create the dynamic message
-        logging.info("Creating message for the model")
-        message_content = create_message(text=text, image_path=image_path)
-        logging.debug(f"Constructed message content: {message_content}")
+        # Execute tools manually and capture intermediate steps
+        state = execute_tools(state)
+        return state
+    except Exception as e:
+        state.agent_outcome = {"error": str(e)}
+        return state
 
-        # Create a HumanMessage with the content
-        message = HumanMessage(content=message_content)
-        logging.debug(f"Constructed HumanMessage: {message}")
+# Processes user input based on type - initialize and execute agent state to produce a response
+def process_input(
+    text: Optional[str] = None, 
+    image_path: Optional[str] = None, 
+    a: Optional[float] = None, 
+    b: Optional[float] = None
+) -> Union[str, dict]:
+    try:
+        if text:
+            user_input = text
+        elif a is not None and b is not None:
+            user_input = f"Add {a} and {b}"
+        elif image_path:
+            user_input = encode_image(image_path)
+        else:
+            return "Please provide valid input."
 
-        # Invoke the model with the message
-        logging.info("Invoking the model")
-        response = model_with_tools.invoke([system_prompt, message])
-        logging.debug(f"Raw model response: {response}")
-
-        # Check if the response contains content
-        if hasattr(response, 'content') and response.content:
-            logging.info(f"Model response content: {response.content}")
-            return response.content
-        
-        # Check for tool call output
-        tool_calls = response.additional_kwargs.get('tool_calls', [])
-        if tool_calls:
-            logging.info(f"Tool call detected: {tool_calls}")
-            for tool_call in tool_calls:
-                if 'arguments' in tool_call['function']:
-                    # Extract the tool's output from the arguments
-                    tool_output = tool_call['function']['arguments']
-                    logging.info(f"Tool output: {tool_output}")
-                    return tool_output
-
-        # If no content or tool call output is present
-        logging.warning("Model response did not contain valid content or tool call output")
-        return "No valid response received from the model."
-
+        state = initialize_state(user_input=user_input)
+        return run_tool_agent(state).agent_outcome or "No valid response received."
     except Exception as e:
         logging.error(f"Error processing input: {e}")
-        return f"An error occurred: {e}"
-
+        return {"error": str(e)}
 
 # Test cases
-logging.info("Test case 1: Text input only")
+logging.info("Test case 1: Add two numbers")
+print(process_input(a=5, b=10))
+
+logging.info("Test case 2: Text input")
 print(process_input(text="What is the capital of France?"))
 
-logging.info("Test case 2: Image input only")
-print(process_input(image_path="static/uploads/obst_test.jpg"))
-
-logging.info("Test case 3: Text and image combination")
-print(process_input(
-    text="Describe this image and explain its artistic style.",
-    image_path="static/uploads/obst_test.jpg"
-))
+# Uncomment to test image input
+# logging.info("Test case 3: Image input")
+# print(process_input(image_path="static/uploads/obst_test.jpg"))

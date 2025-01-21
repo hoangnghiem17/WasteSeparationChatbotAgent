@@ -150,7 +150,7 @@ app = workflow.compile()
 logging.info("Workflow compiled successfully")
 
 # Run the workflow with input
-inputs = {"input": "Give me the product of 10 and 23", "chat_history": []}
+inputs = {"input": "Give me the sum of 10 and 23", "chat_history": []}
 config = {"configurable": {"thread_id": "1"}}
 
 for s in app.stream(inputs, config=config):
