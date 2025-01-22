@@ -46,105 +46,142 @@ def encode_image_to_base64(image_path: str) -> str:
         logging.error(f"Error encoding image: {e}")
         raise e
 
-def invoke_model(conversation_history):
+from typing import TypedDict, Union, List
+from langchain_core.messages import BaseMessage
+
+class AgentState(TypedDict):
     """
-    Invokes the model with the given conversation history.
+    Represents the state of the agent during execution.
+    """
+    input: str  # The user's input to the agent
+    chat_history: List[BaseMessage]  # All messages exchanged in the session
+    agent_outcome: Union[str, None]  # The agent's final response or None if still running
+    intermediate_steps: List[tuple]  # Logs of reasoning and tool actions
+
+def initialize_state(user_input: str, image_path: Optional[str] = None) -> AgentState:
+    """
+    Initializes the AgentState with the user's input and optional image data.
+    """
+    chat_history = [HumanMessage(content=user_input)]
+
+    if image_path:
+        try:
+            image_data = encode_image_to_base64(image_path)
+            chat_history.append(HumanMessage(content=[
+                {"type": "text", "text": user_input},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
+            ]))
+        except FileNotFoundError as e:
+            logging.error(f"Error encoding image: {e}")
+            return {
+                "input": user_input,
+                "chat_history": [],
+                "agent_outcome": {"error": f"Image not found: {e}"},
+                "intermediate_steps": [],
+            }
+
+    return AgentState(
+        input=user_input,
+        chat_history=chat_history,
+        agent_outcome=None,
+        intermediate_steps=[],
+    )
+
+    
+def invoke_model(state: AgentState):
+    """
+    Invokes the model using the conversation history stored in the state.
+    Updates the state with the model's response.
     """
     try:
-        response = model_with_tools.invoke(conversation_history)
+        response = model_with_tools.invoke(state["chat_history"])
         logging.info(f"Model response: {response}")
-        if isinstance(response, AIMessage):
-            return response  
-        else:
-            logging.error("Unexpected response type from the model.")
-            return {"error": "Unexpected response type from the model."}
+        
+        # Append the response to the chat history
+        state["chat_history"].append(response)
+        
+        return response
     except Exception as e:
         logging.error(f"Error invoking model: {e}")
-        return {"error": str(e)}
+        state["agent_outcome"] = {"error": str(e)}
+        return None
 
-def handle_tool_call(response, conversation_history):
+
+def handle_tool_call(state: AgentState):
     """
-    Processes tool calls dynamically if present in the response (requested by model).
+    Processes tool calls from the model's response and updates the state.
     """
+    response = state["chat_history"][-1]  # Get the most recent message from the model
     if hasattr(response, "tool_calls") and response.tool_calls:
         for tool_call in response.tool_calls:
             tool_name = tool_call['name']
             tool_args = tool_call['args']
 
-            try:
-                # Log the tool invocation
-                logging.info(f"Tool '{tool_name}' invoked with arguments: {tool_args}")
+            # Handle specific tool calls
+            if tool_name == "add":
+                try:
+                    logging.info(f"Executing tool '{tool_name}' with arguments: {tool_args}")
+                    result = add.invoke(input=tool_args)
+                    logging.info(f"Tool '{tool_name}' result: {result}")
 
-                # Dynamically resolve the tool function by name
-                tool_function = globals().get(tool_name)
-                if not tool_function:
-                    logging.error(f"Tool '{tool_name}' not found.")
-                    return {"error": f"Tool '{tool_name}' is not implemented."}
+                    # Log the intermediate step
+                    state["intermediate_steps"].append((tool_call, result))
 
-                # Execute the tool and get the result
-                result = tool_function.invoke(input=tool_args)
-                logging.info(f"Tool '{tool_name}' result: {result}")
-
-                # Add the result directly to conversation history as an assistant response
-                conversation_history.append(HumanMessage(content=f"The result is {result}."))
-
-                return f"The result is {result}."
-            except Exception as e:
-                logging.error(f"Error executing tool '{tool_name}': {e}")
-                return {"error": f"Tool '{tool_name}' execution failed."}
+                    # Append the result as a message in chat history
+                    state["chat_history"].append(HumanMessage(content=f"The result is {result}."))
+                    
+                    return result
+                except Exception as e:
+                    logging.error(f"Error executing tool '{tool_name}': {e}")
+                    state["agent_outcome"] = {"error": f"Tool '{tool_name}' execution failed."}
+                    return None
     else:
         logging.warning("No tool calls found in the response.")
-        return response.content if isinstance(response, AIMessage) else "No valid response received."
+        state["agent_outcome"] = response.content if isinstance(response, AIMessage) else "No valid response received."
+
 
 
 def process_input(
     text: Optional[str] = None,
     image_path: Optional[str] = None,
     a: Optional[float] = None,
-    b: Optional[float] = None
+    b: Optional[float] = None,
 ) -> Union[str, dict]:
     """
-    Handles text, numerical, and image inputs, and routes input to handling methods.
+    Processes the user's input and runs the workflow, including text and image handling.
     """
     try:
-        # Handle numerical inputs
+        # Determine input type
         if a is not None and b is not None:
             user_input = f"Add {a} and {b}"
-            conversation_history = [HumanMessage(content=user_input)]
-            response = invoke_model(conversation_history)
-            return handle_tool_call(response, conversation_history)
+            state = initialize_state(user_input)
+        elif text and image_path:
+            user_input = text
+            state = initialize_state(user_input, image_path)
+        elif text:
+            user_input = text
+            state = initialize_state(user_input)
+        elif image_path:
+            user_input = "Image input provided."
+            state = initialize_state(user_input, image_path)
+        else:
+            return "Please provide valid input."
 
-        # Handle text and image inputs
-        if text or image_path:
-            content = []
+        # Invoke the model
+        response = invoke_model(state)
+        if not response:
+            return state["agent_outcome"]
 
-            # Add text if provided
-            if text:
-                content.append({"type": "text", "text": text})
+        # Handle tools or finalize response
+        if hasattr(response, "tool_calls"):
+            handle_tool_call(state)
 
-            # Add image if provided
-            if image_path:
-                try:
-                    image_data = encode_image_to_base64(image_path)
-                    content.append({
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}
-                    })
-                except FileNotFoundError as e:
-                    logging.error(f"Error encoding image: {e}")
-                    return {"error": str(e)}
-
-            # Create a HumanMessage with combined content
-            message = HumanMessage(content=content)
-            response = invoke_model([message])
-            return response.content if isinstance(response, AIMessage) else "No valid response received."
-
-        # If no valid input provided
-        return "Please provide valid input (text, image, or numbers)."
-
+        # Return the final outcome if present
+        return state["agent_outcome"] or response.content
     except Exception as e:
         logging.error(f"Error processing input: {e}")
         return {"error": str(e)}
+
 
 
 # Example test cases
