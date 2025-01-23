@@ -2,8 +2,9 @@ import base64
 import os
 import logging
 import json
+import requests
 
-from typing import Optional, Union, List, TypedDict
+from typing import Optional, Union, List, TypedDict, Tuple
 from langchain_openai import ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OpenAIEmbeddings
@@ -18,6 +19,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 # Global variables
 openai_api_key = os.getenv("OPENAI_API_KEY")
+faiss_store_path="faiss_store"
 with open("categories.json", "r", encoding="utf-8") as file:
     categories = json.load(file)
 
@@ -63,14 +65,28 @@ def update_outcome(state: 'AgentState', outcome: Union[str, dict]):
 
 # Tool for adding two numbers
 @tool
-def add(a: float, b: float) -> float:
-    """Takes in two numbers and returns the sum."""
-    logging.info(f"Executing add tool with arguments: a={a}, b={b}")
-    return a + b
+def geocode_address(address: str) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Takes an address and returns its latitude and longitude.
+    """
+    url = "https://nominatim.openstreetmap.org/search"
+    headers = {'User-Agent': 'WasteSeparationChatbot/1.0 (nghhoang@gmail.com)'}
+    params = {'q': address, 'format': 'json', 'limit': 1}
+
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if data:
+            lat, lon = float(data[0]['lat']), float(data[0]['lon'])
+            return lat, lon
+    except Exception as e:
+        logging.error(f"Error geocoding address '{address}': {e}")
+        return None, None
 
 # Initialize the model with tools
 llm = ChatOpenAI(model="gpt-4o-mini", openai_api_key=openai_api_key)
-model_with_tools = llm.bind_tools([add])
+model_with_tools = llm.bind_tools([geocode_address])
 logging.info("Tools successfully bound to the model.")
 
 # Define AgentState
@@ -272,24 +288,30 @@ def execute_tools(state: AgentState) -> AgentState:
             tool_args = tool_call["args"]
             tool_call_id = tool_call["id"]
 
-            if tool_name == "add":
+            if tool_name == "geocode":
                 try:
-                    result = add.invoke(input=tool_args)
-                    logging.info(f"Tool '{tool_name}' executed successfully with result: {result}")
-                    tool_message = {
-                        "role": "tool",
-                        "name": tool_name,
-                        "content": str(result),
-                        "tool_call_id": tool_call_id,
-                    }
-                    state["chat_history"].append(tool_message)
-                    update_outcome(state, f"The result is {result}.")
+                    address = tool_args.get("address")
+                    if address:
+                        lat, lon = geocode_address(address)
+                        logging.info(f"Tool '{tool_name}' executed successfully. Coordinates: {lat}, {lon}")
+                        tool_message = {
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": f"Coordinates: Latitude={lat}, Longitude={lon}" if lat and lon else "Geocoding failed.",
+                            "tool_call_id": tool_call_id,
+                        }
+                        state["chat_history"].append(tool_message)
+                        update_outcome(state, f"Coordinates: {lat}, {lon}" if lat and lon else "Failed to geocode address.")
+                    else:
+                        logging.warning("No address provided for geocode tool.")
+                        update_outcome(state, {"error": "No address provided."})
                 except Exception as e:
                     logging.error(f"Error executing tool '{tool_name}': {e}")
                     update_outcome(state, {"error": str(e)})
     else:
         logging.warning("No tool calls found. Skipping action node.")
     return state
+
 
 # Build the workflow graph
 workflow = StateGraph(AgentState)
@@ -304,31 +326,35 @@ app = workflow.compile()
 def process_input(
     text: Optional[str] = None,
     image_path: Optional[str] = None,
-    a: Optional[float] = None,
-    b: Optional[float] = None,
+    address: Optional[str] = None,
     faiss_store_path: str = "vectorstore_path"
 ) -> Union[str, dict]:
-    logging.info(f"Processing input with parameters: text={text}, image_path={image_path}, a={a}, b={b}")
+    logging.info(f"Processing input with parameters: text={text}, image_path={image_path}, address={address}")
 
-    if a is not None and b is not None:
-        user_input = f"Add {a} and {b}"
+    # Handle geocoding for an address
+    if address:
+        logging.info(f"Geocoding address: {address}")
         try:
-            result = add.run({"a": a, "b": b})
-            final_response = {"response": f"The sum of {a} and {b} is {result}."}
+            lat, lon = geocode_address(address)
+            if lat is not None and lon is not None:
+                final_response = {"response": f"Coordinates for '{address}': Latitude={lat}, Longitude={lon}"}
+            else:
+                final_response = {"error": f"Failed to geocode the address: {address}"}
             logging.info(f"Final agent answer: {final_response}")
             return final_response
         except Exception as e:
-            logging.error(f"Error running the add tool: {e}")
-            return {"error": "Failed to execute the add tool."}
+            logging.error(f"Error geocoding address: {e}")
+            return {"error": "Failed to geocode the address."}
 
-    elif text and image_path:
+    # Handle text and image inputs
+    if text and image_path:
         user_input = f"{text} (with image)"
     elif text:
         user_input = text
     elif image_path:
         user_input = "Image input provided."
     else:
-        return {"error": "Please provide valid input."}
+        return {"error": "Please provide valid input (text, image, or address)."}
 
     # Classify query or image
     category = classify_waste_query_llm(user_query=user_input, image_path=image_path)
@@ -386,14 +412,13 @@ def process_input(
         logging.info(f"Final agent answer: {final_response}")
         return final_response
 
-# Example test cases
-if __name__ == "__main__":
-    faiss_store_path="faiss_store"
-    
-    """
-    logging.info("Test case 1: Add two numbers")
-    print(process_input(a=5, b=10))
 
+# Example test cases
+if __name__ == "__main__":   
+    
+    logging.info("Test case 1: Geocode Address")
+    print(process_input(address="Bergerstraße 148, 60385, Frankfurt am Main"))
+    """
     logging.info("Test case 2: Text input")
     print(process_input(text="What is the capital of France?"))
     
