@@ -1,43 +1,60 @@
 import base64
 import os
 import logging
+import json
+
 from typing import Optional, Union, List, TypedDict
 from langchain_openai import ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_core.messages import HumanMessage, BaseMessage
+from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Helper function: Encode image to Base64
-def encode_image_to_base64(image_path: str) -> str:
-    logging.info(f"Encoding image at path: {image_path}")
+# Global variables
+openai_api_key = os.getenv("OPENAI_API_KEY")
+with open("categories.json", "r", encoding="utf-8") as file:
+    categories = json.load(file)
+
+# Helper function: Encode image to Base64 and structure correctly for API
+def create_image_message(user_input: str, image_path: str) -> HumanMessage:
+    """
+    Combines image encoding and message preparation into one function to return a HumanMessage.
+
+    Args:
+        user_input (str): The textual input to include in the message.
+        image_path (str): The file path to the image.
+
+    Returns:
+        HumanMessage: A message containing the user input and the base64-encoded image.
+    """
+    logging.info(f"Creating image message with user input and image at path: {image_path}")
+    
+    # Validate the file path
     if not os.path.isfile(image_path):
         logging.error(f"Image file not found: {image_path}")
-        raise FileNotFoundError(f"Image file not found: {image_path}")
+    
     try:
+        # Encode the image as Base64
         with open(image_path, "rb") as image_file:
             encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
         logging.info("Image successfully encoded to Base64.")
-        return encoded_image
+        
+        # Return a HumanMessage with the image and user input
+        return HumanMessage(
+            content=[
+                {"type": "text", "text": user_input},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
+            ]
+        )
     except Exception as e:
-        logging.error(f"Error encoding image: {e}")
+        logging.error(f"Error creating image message: {e}")
         raise e
-
-# Helper function: Prepare image message
-def prepare_image_message(user_input: str, image_path: str) -> List[dict]:
-    logging.info("Preparing image message with user input and image data.")
-    image_data = encode_image_to_base64(image_path)
-    return [
-        {"type": "text", "text": user_input},
-        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}}
-    ]
 
 # Helper function: Update agent outcome
 def update_outcome(state: 'AgentState', outcome: Union[str, dict]):
@@ -52,7 +69,7 @@ def add(a: float, b: float) -> float:
     return a + b
 
 # Initialize the model with tools
-llm = ChatOpenAI(model="gpt-4o-mini", openai_api_key=os.getenv("OPENAI_API_KEY"))
+llm = ChatOpenAI(model="gpt-4o-mini", openai_api_key=openai_api_key)
 model_with_tools = llm.bind_tools([add])
 logging.info("Tools successfully bound to the model.")
 
@@ -70,7 +87,7 @@ def initialize_state(user_input: str, image_path: Optional[str] = None) -> Agent
 
     if image_path:
         try:
-            chat_history.append(HumanMessage(content=prepare_image_message(user_input, image_path)))
+            chat_history.append(HumanMessage(content=create_image_message(user_input, image_path)))
             logging.info("Image data successfully attached to chat history.")
         except FileNotFoundError as e:
             logging.error(f"Image not found: {e}")
@@ -89,40 +106,68 @@ def initialize_state(user_input: str, image_path: Optional[str] = None) -> Agent
     )
 
 # Classify query into waste categories
-def classify_waste_query_llm(user_query: str) -> str:
-    predefined_categories = {
-        "battery_waste": "If the query is about the disposal of batteries and related items.",
-        "bio_waste": "If the query is about the disposal of organic waste.",
-        "electronic_waste": "If the query is about the disposal of electronic waste and related items.",
-        "glas_waste": "If the query is about the disposal of glass waste.",
-        "package_waste": "If the query is about the disposal of packaging waste.",
-        "paper_waste": "If the query is about the disposal of paper waste.",
-        "residual_waste": "If the query is about the disposal of non-recyclable waste or items that are not assigned to any specific category, such as heavily soiled materials, hygiene products, or broken household items.",
-        "other_waste": "If the query is about the disposal of waste types that do not fit other categories.",
-        "general": "If the query is about general waste separation information in Frankfurt am Main.",
-        "fallback": "If the query does not match any of the above mentioned categories."
-    }
-
-    prompt = f"""
-    Classify the following query into one of the categories, considering the description of each: 
-    {', '.join([f'{key} ({description})' for key, description in predefined_categories.items()])}.
-    
-    Answer with only the keywords, for example 'battery_waste'. If the query does not fit any category, respond with 'fallback'.
-
-    Query: {user_query}
-    """
+def classify_waste_query_llm(user_query: Optional[str] = None, image_path: Optional[str] = None) -> str:
     try:
-        classification_response = model_with_tools.invoke([HumanMessage(content=prompt)])
-        category = classification_response.content.strip().lower()
+        # Prepare the HumanMessage
+        if image_path:
+            human_message = create_image_message(user_query or "Classify this image:", image_path)
+        else:
+            # For text-only input
+            human_message = HumanMessage(
+                content=[{"type": "text", "text": user_query or "Classify this input:"}]
+            )
+    except Exception as e:
+        logging.error(f"Error creating HumanMessage: {e}. Returning fallback.")
+        return "fallback"
 
-        # Ensure the response matches one of the predefined categories
-        if category in predefined_categories:
+    # Convert the dictionary into a formatted string
+    formatted_categories = "\n".join([f"- {key}: {value}" for key, value in categories.items()])
+    keywords_categories = list(categories.keys())
+    
+    # Construct the system prompt for classification
+    system_prompt = SystemMessage(
+        content=(
+            f"""
+            You are an expert in classifying user queries about waste separation that include text and/or images into the following predefined categories:
+            {formatted_categories}
+
+            Input Types:
+            1. Only Text: Analyze the text query and classify it based on the provided category descriptions and your knowledge.
+            2. Only Image: Analyze the objects or content in the image and classify it based on the category descriptions and your knowledge.
+            3. Text and Image:
+                - First, identify the objects or content in the image.
+                - Then, interpret the text query and determine how it relates to the image.
+                - Combine both inputs to classify the query. If there is a conflict, prioritize the image content unless the text explicitly specifies otherwise.
+
+            Examples:
+            - If the text says "Where to dispose this?" with an image of food scraps, classify as 'bio_waste'.
+
+            Response Format:
+            - Respond with **only one keyword** from the following categories: {keywords_categories}.
+            - If the input cannot fit into any of the categories, respond with 'fallback'.
+
+            Important Note:
+            - Be specific in recognizing objects and interpreting intent based on both inputs.
+            - For ambiguous cases, rely on the most clear and relevant input (text or image).
+            """
+        )
+    )
+
+    try:
+        # Invoke the LLM with the system prompt and HumanMessage
+        classification_response = model_with_tools.invoke([system_prompt, human_message])
+        category = classification_response.content.strip().lower()
+        logging.info(f"LLM Query Classification Response: {category}")
+
+        if category in categories:
             return category
         logging.warning(f"Unmatched category returned by LLM: {category}")
         return "fallback"
     except Exception as e:
         logging.error(f"Error classifying query: {e}")
         return "fallback"
+
+
 
 # Retrieval Function
 def retrieve_similar_chunks(query: str, faiss_store_path: str, category: str, k: int = 2) -> List[str]:
@@ -159,10 +204,6 @@ def retrieve_similar_chunks(query: str, faiss_store_path: str, category: str, k:
 
         logging.info(f"Filtered {len(filtered_docs)} documents for category: {category}")
 
-        # Debug filtered documents metadata
-        for doc in filtered_docs:
-            logging.debug(f"Filtered Document Metadata: {doc.metadata}")
-
         # Create a temporary vector store for the filtered documents
         embeddings = vector_store.embeddings
         temp_vector_store = FAISS.from_documents(filtered_docs, embeddings)
@@ -180,15 +221,14 @@ def retrieve_similar_chunks(query: str, faiss_store_path: str, category: str, k:
             logging.info("No similar chunks found.")
             return []
     except Exception as e:
-        logging.error(f"Error during similarity search: {e}", exc_info=True)
+        logging.error(f"Error during similarity search: {e}")
         return []
 
 # Invoke the model
 def invoke_model(state: AgentState):
-    logging.info("Invoking the model with the current conversation history.")
     try:
         response = model_with_tools.invoke(state["chat_history"])
-        logging.info(f"Model response received: {response.content}")
+        logging.info(f"Model invoked with conversation history. Response: {response.content}")
         state["chat_history"].append(response)
         return response
     except Exception as e:
@@ -225,7 +265,6 @@ def run_tool_agent(state: AgentState) -> AgentState:
 
 # Node: Tool execution (action)
 def execute_tools(state: AgentState) -> AgentState:
-    logging.info("Executing tools based on the model's request.")
     response = state["chat_history"][-1]
     if hasattr(response, "tool_calls"):
         for tool_call in response.tool_calls:
@@ -236,7 +275,7 @@ def execute_tools(state: AgentState) -> AgentState:
             if tool_name == "add":
                 try:
                     result = add.invoke(input=tool_args)
-                    logging.info(f"Tool '{tool_name}' executed. Result: {result}")
+                    logging.info(f"Tool '{tool_name}' executed successfully with result: {result}")
                     tool_message = {
                         "role": "tool",
                         "name": tool_name,
@@ -289,14 +328,13 @@ def process_input(
     elif image_path:
         user_input = "Image input provided."
     else:
-        return "Please provide valid input."
+        return {"error": "Please provide valid input."}
 
-    # Classify query using LLM
-    category = classify_waste_query_llm(user_input)
+    # Classify query or image
+    category = classify_waste_query_llm(user_query=user_input, image_path=image_path)
     logging.info(f"Query classified as '{category}'. User input: {user_input}")
 
     if category == "fallback":
-        # Generate an LLM-based response for fallback cases
         logging.info("Handling fallback query by generating a response directly with the LLM.")
         prompt = f"""
         The user asked a question that does not match any specific waste category.
@@ -307,8 +345,6 @@ def process_input(
 
         Answer the query concisely and informatively.
         """
-        logging.debug(f"Generated prompt for fallback case: {prompt}")
-
         try:
             fallback_response = model_with_tools.invoke([HumanMessage(content=prompt)])
             final_answer = fallback_response.content.strip()
@@ -354,21 +390,23 @@ def process_input(
 if __name__ == "__main__":
     faiss_store_path="faiss_store"
     
-    #logging.info("Test case 1: Add two numbers")
-    #print(process_input(a=5, b=10))
+    """
+    logging.info("Test case 1: Add two numbers")
+    print(process_input(a=5, b=10))
 
-    #logging.info("Test case 2: Text input")
-    #print(process_input(text="What is the capital of France?"))
-
-    #logging.info("Test case 3: Waste Text input")
-    #print(process_input(text="Where to dispose diapers?", faiss_store_path=faiss_store_path))
+    logging.info("Test case 2: Text input")
+    print(process_input(text="What is the capital of France?"))
     
+    logging.info("Test case 3: Waste Text input")
+    print(process_input(text="Where do I dispose old fruits?", faiss_store_path=faiss_store_path))
+   
     logging.info("Test case 4: Image input")
-    print(process_input(image_path="static/uploads/obst_test.jpg", faiss_store_path=faiss_store_path))
+    print(process_input(image_path="static/uploads/paket_test.jpg", faiss_store_path=faiss_store_path))
 
-    #logging.info("Test case 5: Text + Image input")
-    #print(process_input(
-    #    text="Was ist auf dem Bild zu sehen?",
-    #    image_path="static/uploads/obst_test.jpg",
-    #    faiss_store_path=faiss_store_path
-    #))
+    logging.info("Test case 5: Text + Image input")
+    print(process_input(
+        text="Where do I dispose the objects on the image?",
+        image_path="static/uploads/obst_test.jpg",
+        faiss_store_path=faiss_store_path
+    ))
+    """

@@ -1,0 +1,13 @@
+{
+    "battery_waste": "If the query is about the disposal of batteries and related items.",
+    "bio_waste": "If the query is about the disposal of organic waste.",
+    "electronic_waste": "If the query is about the disposal of electronic waste and related items.",
+    "glas_waste": "If the query is about the disposal of glass waste.",
+    "package_waste": "If the query is about the disposal of packaging waste.",
+    "paper_waste": "If the query is about the disposal of paper waste.",
+    "residual_waste": "If the query is about the disposal of non-recyclable waste or items that are not assigned to any specific category, such as heavily soiled materials, hygiene products, or broken household items.",
+    "other_waste": "If the query is about the disposal of waste types that do not fit other categories.",
+    "general": "If the query is about general waste separation information in Frankfurt am Main.",
+    "fallback": "If the query does not match any of the above-mentioned categories."
+  }
+  
