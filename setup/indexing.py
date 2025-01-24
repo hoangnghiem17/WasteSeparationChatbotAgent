@@ -118,7 +118,7 @@ def create_faiss_vector_store(text_dir, faiss_store_path, chunk_size=700, chunk_
 
 # Define sections with non-contiguous page ranges
 sections = {
-    "general": [(6, 8), (10, 10), (13, 13), (15, 15)],  
+    "general_waste": [(6, 8), (10, 10), (13, 13), (15, 15)],  
     "residual_waste": [(17, 17), (19, 21)],  
     "bio_waste": [(22, 23), (25, 26)], 
     "paper_waste": [(27, 31)],

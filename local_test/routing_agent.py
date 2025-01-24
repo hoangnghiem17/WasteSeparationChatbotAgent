@@ -224,30 +224,38 @@ tool_executor = ToolExecutor(toolkit)
 logging.info("Tool executor initialized")
 
 # Execute tools selected by agent based on reasoning process - processes tool output and update state
-def execute_tools(state):
+def execute_tools(state: AgentState) -> AgentState:
     """
     Executes tools selected by the agent and processes their outputs.
 
     Args:
-        state (dict): A dictionary containing the agent's outcome and tool-related details.
+        state (AgentState): The current state of the agent.
 
     Returns:
-        dict: Updated state with intermediate steps (tool outputs) for each executed tool.
+        AgentState: Updated state with intermediate steps (tool outputs).
     """
-    # Retrieves agent outcome from state
-    agent_action = state['agent_outcome']
-    if type(agent_action) is not list:
-        agent_action = [agent_action]
+    outcome = state["agent_outcome"]
+    steps = state.get("intermediate_steps", [])
 
-    # Iterate over actions
-    steps = []
-    for action in agent_action:
-        logging.info(f"Executing tool: {action.tool} with input: {action.tool_input}")
-        output = tool_executor.invoke(action) 
-        logging.info(f"Tool result: {output}")
-        steps.append((action, str(output)))
+    if isinstance(outcome, ToolAgentAction):
+        # Avoid redundant execution
+        if any(outcome.tool == step[0].tool for step in steps):
+            logging.warning(f"Tool '{outcome.tool}' already executed. Skipping.")
+            return state
+
+        try:
+            result = tool_executor.invoke(outcome)
+            steps.append((outcome, str(result)))
+            state["intermediate_steps"] = steps
+            logging.info(f"Tool execution result: {result}")
+        except Exception as e:
+            logging.error(f"Error executing tool '{outcome.tool}': {e}")
+            state["intermediate_steps"] = [{"error": str(e)}]
+    else:
+        logging.info("No tools to execute.")
     
-    return {"intermediate_steps": steps}
+    return state
+
 
 # 4) Define Graph State Structure - what is passed between workflow nodes
 class AgentState(TypedDict):
@@ -257,46 +265,49 @@ class AgentState(TypedDict):
     intermediate_steps: Annotated[list[Union[tuple[AgentAction, str], tuple[ToolAgentAction, str]]], operator.add]
     
 # 5) Add conditional Edge Logic - evaluate agent's current state and decide on further steps
-def should_continue(data):
+def should_continue(state: AgentState) -> str:
     """
-    Determines whether the agent should continue execution or terminate.
+    Determines whether the workflow should continue or terminate.
 
     Args:
-        data (dict): State data containing the agent's outcome.
+        state (AgentState): The current state of the agent.
 
     Returns:
-        str: "CONTINUE" if the agent should execute more tools, "END" otherwise.
+        str: "CONTINUE" if more tools need to be executed, "END" otherwise.
     """
-    # Inspects agent_outcome in data dictionary - if it's AgentFinish then the agent has completed task
-    if isinstance(data['agent_outcome'], AgentFinish):
-        logging.info("Agent finished execution")
+    outcome = state["agent_outcome"]
+    
+    # Stop if the outcome is final or an error occurred
+    if isinstance(outcome, AgentFinish):
+        logging.info("Agent has completed execution.")
         return "END"
-    else:
-        logging.info("Agent continuing execution")
-        return "CONTINUE"
+    
+    if isinstance(outcome, dict) and "error" in outcome:
+        logging.error("An error occurred. Ending workflow.")
+        return "END"
+    
+    # Stop if intermediate steps contain a final result
+    if state["intermediate_steps"]:
+        last_step = state["intermediate_steps"][-1]
+        if "Geocoding failed" in str(last_step) or "latitude" in str(last_step):
+            logging.info("Workflow completed after tool execution.")
+            return "END"
+
+    return "CONTINUE"
+
 
 # 6) Build the Graph - represents workflow logic as directed graph
+# Build Workflow Graph
 workflow = StateGraph(AgentState)
-
-# Agent for reasoning, action for tool execution
-workflow.add_node("agent", run_tool_agent) 
-workflow.add_node("action", execute_tools) 
-
-# Define workflow
+workflow.add_node("agent", run_tool_agent)
+workflow.add_node("action", execute_tools)
 workflow.set_entry_point("agent")
-workflow.add_edge('action', 'agent')
 
-# Determine to continue/terminate execution based on agent's output
-workflow.add_conditional_edges(
-    "agent",
-    should_continue,
-    {
-        "CONTINUE": "action",
-        "END": END
-    }
-)
-
+# Define edges
+workflow.add_edge("action", "agent")
+workflow.add_conditional_edges("agent", should_continue, {"CONTINUE": "action", "END": END})
 app = workflow.compile()
+
 logging.info("Workflow compiled successfully")
 
 # Run the agent - iteratively executes workflow and result are streamed back after each node's execution

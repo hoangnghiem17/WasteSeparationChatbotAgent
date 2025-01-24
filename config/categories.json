@@ -7,7 +7,8 @@
     "paper_waste": "If the query is about the disposal of paper waste.",
     "residual_waste": "If the query is about the disposal of non-recyclable waste or items that are not assigned to any specific category, such as heavily soiled materials, hygiene products, or broken household items.",
     "other_waste": "If the query is about the disposal of waste types that do not fit other categories.",
-    "general": "If the query is about general waste separation information in Frankfurt am Main.",
-    "fallback": "If the query does not match any of the above-mentioned categories."
+    "general_waste": "If the query is about general waste separation information in Frankfurt am Main.",
+    "location": "If the query is about finding the closest recycling facility to an address or contains an address.",
+    "fallback": "If the query is not waste-related and does not match any of the above-mentioned categories"
   }
   
