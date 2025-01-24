@@ -5,6 +5,7 @@ from typing import  Union, TypedDict, Annotated, List
 import operator
 import sqlite3
 import json
+import base64
 
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
@@ -15,7 +16,7 @@ from langchain.agents import create_tool_calling_agent
 from langchain_core.agents import AgentAction, AgentFinish
 from langgraph.prebuilt.tool_executor import ToolExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from langchain_core.agents import AgentFinish
 from langchain.agents.output_parsers.tools import ToolAgentAction
 from dotenv import load_dotenv
@@ -48,46 +49,91 @@ system_prompt = prompt_template.format(
 llm = ChatOpenAI(model="gpt-4o-mini", api_key=openai_api_key)
 
 # Define tool functions
-def classify_query(user_query: str) -> str:
+def classify_query(user_query: str = None, image_path: str = None) -> str:
     """
-    Classifies the user query into predefined waste categories using the LLM.
+    Classifies the input (text query and/or image) into predefined waste categories using the LLM.
 
     Args:
-        user_query (str): The text input from the user.
+        user_query (str, optional): The text input from the user.
+        image_path (str, optional): Path to an image file for additional context.
 
     Returns:
         str: The classification category or 'fallback' if classification fails.
     """
-    logging.info(f"Starting classification for query: {user_query}")
-       
+    if not user_query and not image_path:
+        logging.error("Both user_query and image_path are missing. Cannot classify without input.")
+        return "fallback"
+
+    logging.info(f"Starting classification for query: {user_query or '(image only)'}")
+
+    # Define the base system prompt
     prompt = f"""
     You are an expert in classifying user queries about waste separation into the following predefined categories:
     {formatted_categories}
 
     Input:
-    - Analyze the text query to determine the most appropriate category.
+    - Analyze the text query and/or the image (if provided) to determine the most appropriate category.
 
     Response Format:
     - Respond with one keyword from these categories: {keywords_categories}.
     - If no category applies, respond with 'fallback'.
-
-    Query: {user_query}
     """
     logging.info("Constructed classification prompt for LLM.")
 
-    try:
-        # Use invoke method instead of deprecated __call__
-        classification_response = llm.invoke(input=[SystemMessage(content=prompt)])
-        #logging.info(f"Received response from LLM: {classification_response}")
-        category = classification_response.content.strip().lower()
-        if category in categories:
-            logging.info(f"Classified query as category: {category}")
-            return category
-        logging.warning(f"LLM returned an unknown category: {category}. Defaulting to 'fallback'.")
+    # Prepare the system message
+    system_message = SystemMessage(content=prompt)
+
+    # Prepare the user message (text, image, or both)
+    if image_path:
+        try:
+            logging.info(f"Encoding image at path: {image_path}")
+
+            # Validate and encode the image
+            if not os.path.isfile(image_path):
+                logging.error(f"Image file not found: {image_path}")
+                return "fallback"
+
+            with open(image_path, "rb") as image_file:
+                encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
+            logging.info("Image successfully encoded to Base64.")
+
+            # Create a HumanMessage with image and optional text
+            user_message_content = []
+            if user_query:
+                user_message_content.append({"type": "text", "text": user_query})
+            user_message_content.append(
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
+            )
+            user_message = HumanMessage(content=user_message_content)
+        except Exception as e:
+            logging.error(f"Error encoding image: {e}")
+            return "fallback"
+    elif user_query:
+        # Create a text-only HumanMessage
+        user_message = HumanMessage(content=user_query)
+    else:
+        logging.error("Both query and image are missing.")
         return "fallback"
+
+    # Combine system and user messages
+    messages = [system_message, user_message]
+
+    try:
+        # Invoke the LLM with the prepared messages
+        classification_response = llm.invoke(input=messages)
+        category = classification_response.content.strip().lower()
+
+        # Validate the returned category
+        if category in categories:
+            logging.info(f"Query classified as category: {category}")
+            return category
+        else:
+            logging.warning(f"Unknown category returned by LLM: {category}. Defaulting to 'fallback'.")
+            return "fallback"
     except Exception as e:
         logging.error(f"Error during classification: {e}")
         return "fallback"
+
 
 # Retrieval Function
 def retrieve_chunks(query: str, faiss_store_path: str, category: str, k: int = 2) -> List[str]:
@@ -232,17 +278,19 @@ def find_closest_facility(user_coords, db_path):
 
 # Tools wrapped with LangChain decorators
 @tool
-def classify_query_tool(user_query: str) -> str:
+def classify_query_tool(user_query: str = None, image_path: str = None) -> str:
     """
     Tool wrapper for classify_query function. Classifies the user query into predefined waste categories.
 
     Args:
-        user_query (str): The text input from the user.
+        user_query (str, optional): The text input from the user.
+        image_path (str, optional): Path to an image file for additional context.
 
     Returns:
         str: The classification category or 'fallback' if classification fails.
     """
-    return classify_query(user_query)
+    logging.info(f"Invoking classify_query with query: {user_query} and image: {image_path}")
+    return classify_query(user_query, image_path)
 
 @tool
 def retrieve_chunks_tool(query: str, category: str, k: int = 2) -> List[str]:
@@ -334,6 +382,12 @@ def execute_tools(state):
     steps = []
     for action in agent_action:
         logging.info(f"Executing tool: {action.tool} with input: {action.tool_input}")
+        
+        # Update tool input handling
+        tool_input = action.tool_input
+        if isinstance(tool_input, dict):
+            tool_input["image_path"] = state["input"].get("image_path")  # Add image_path if available
+        
         try:
             output = tool_executor.invoke(action)
             logging.info(f"Tool '{action.tool}' returned result: {output}")
@@ -393,22 +447,37 @@ app = workflow.compile()
 
 # Example Test
 if __name__ == "__main__":
-    # Define multiple test cases
+    # Define test cases for text-only, image-only, and combined inputs
     test_cases = [
-        #"Where is the next recycling facility to Frankallee 41, 60327, Franfurt am Main?",  # Example 1: Address input
-        "Where do I dispose my wine bottle?",            # Example 2: General disposal query
-        "In which trash do diapers belong?",  # Example 3: Bulky waste
-        #"How does the recycling system in Frankfurt works?", # Example 4: General Waste
-        #"What is the capital of France?"      # Example 5: Edge case
+        #{"user_input": "Where is the next recycling facility to Frankallee 41, 60327, Franfurt am Main?", "image_path": None},  # Example 1: Address input
+        #{"user_input": "Where do I dispose my wine bottle?", "image_path": None},            # Example 2: Glas waste
+        #{"user_input": "In which trash do diapers belong?", "image_path": None},             # Example 3: Bulky waste
+        #{"user_input": "How does the recycling system in Frankfurt works?", "image_path": None},  # Example 4: General Waste
+        #{"user_input": "What is the capital of France?", "image_path": None},                # Example 5: Edge case
+        {"user_input": None, "image_path": "static/uploads/paket_test.jpg"},             # Example 6: Image-only input
+        {"user_input": "What category does this belong to?", "image_path": "static/uploads/obst_test.jpg"},  # Example 7: Text and image input
     ]
-   
+
+    # Testing Classify_Query
+    """
+    for i, test_case in enumerate(test_cases, start=1):
+        print(f"\n--- Test Case {i} ---")
+        user_query = test_case["user_input"]
+        image_path = test_case["image_path"]
+
+        result = classify_query(user_query=user_query, image_path=image_path)
+    """
+    
     # Testing Agent
-    for i, user_input in enumerate(test_cases, start=1):
+    for i, test_case in enumerate(test_cases, start=1):
+        user_input = test_case["user_input"]
+        image_path = test_case["image_path"]
+        
         print(f"\n--- Test Case {i} ---")
         
         # Initialize agent state
         agent_state = {
-            "input": user_input,
+            "input": {"user_query": user_input, "image_path": image_path},  # Pass both user_query and image_path
             "chat_history": [],
             "agent_outcome": None,
             "intermediate_steps": []
@@ -416,4 +485,3 @@ if __name__ == "__main__":
 
         # Run the workflow
         output_state = app.invoke(agent_state)
-    
