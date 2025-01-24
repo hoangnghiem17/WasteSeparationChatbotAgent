@@ -81,7 +81,7 @@ function handleSend() {
     showTypingIndicator();
 
     // Send user's message and image to Flask backend
-    fetch("/process_query", {
+    fetch("/agent", {
         method: "POST",
         body: queryData
     })

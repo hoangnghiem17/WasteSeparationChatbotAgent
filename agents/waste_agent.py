@@ -443,45 +443,4 @@ workflow.add_conditional_edges(
         "END": END
     }
 )
-app = workflow.compile()
-
-# Example Test
-if __name__ == "__main__":
-    # Define test cases for text-only, image-only, and combined inputs
-    test_cases = [
-        {"user_input": "Where is the next recycling facility to Frankallee 41, 60327, Franfurt am Main?", "image_path": None},  # Example 1: Address input
-        #{"user_input": "Where do I dispose my wine bottle?", "image_path": None},            # Example 2: Glas waste
-        #{"user_input": "In which trash do diapers belong?", "image_path": None},             # Example 3: Bulky waste
-        #{"user_input": "How does the recycling system in Frankfurt works?", "image_path": None},  # Example 4: General Waste
-        #{"user_input": "What is the capital of France?", "image_path": None},                # Example 5: Edge case
-        #{"user_input": None, "image_path": "static/uploads/paket_test.jpg"},             # Example 6: Image-only input
-        #{"user_input": "What category does this belong to?", "image_path": "static/uploads/obst_test.jpg"},  # Example 7: Text and image input
-    ]
-
-    # Testing Classify_Query
-    """
-    for i, test_case in enumerate(test_cases, start=1):
-        print(f"\n--- Test Case {i} ---")
-        user_query = test_case["user_input"]
-        image_path = test_case["image_path"]
-
-        result = classify_query(user_query=user_query, image_path=image_path)
-    """
-    
-    # Testing Agent
-    for i, test_case in enumerate(test_cases, start=1):
-        user_input = test_case["user_input"]
-        image_path = test_case["image_path"]
-        
-        print(f"\n--- Test Case {i} ---")
-        
-        # Initialize agent state
-        agent_state = {
-            "input": {"user_query": user_input, "image_path": image_path},  # Pass both user_query and image_path
-            "chat_history": [],
-            "agent_outcome": None,
-            "intermediate_steps": []
-        }
-
-        # Run the workflow
-        output_state = app.invoke(agent_state)
+agent_app = workflow.compile()

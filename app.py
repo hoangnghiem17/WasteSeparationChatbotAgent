@@ -3,13 +3,10 @@ import os
 from werkzeug.utils import secure_filename
 from datetime import timedelta
 from flask import Flask, request, jsonify, render_template, session
-from pydantic import ValidationError
 
-from services.llm import call_llm
-from services.history import get_conversation, add_message
-from services.prompt import match_prompt_to_query
-from services.retrieval import retrieve_similar_chunks
-from models.models import TextPayload, OpenAIResponse
+from langchain_core.agents import AgentFinish
+from langchain.agents.output_parsers.tools import ToolAgentAction
+from agents.waste_agent import run_tool_agent, agent_app
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -44,80 +41,48 @@ def reset_conversation():
     return jsonify({"response": "Conversation reset."})
 
 
-@app.route('/process_query', methods=['POST'])
-def process_query() -> OpenAIResponse:
-    try:
-        user_query = request.form.get("query", "")
-        logging.info(f"Received user query: '{user_query}'")
+@app.route('/agent', methods=['POST'])
+def agent_endpoint():
+    data = request.form
+    user_query = data.get("query")
+    image_file = request.files.get("image")  # Handle optional image input
+    image_path = None
 
-        user_query = TextPayload(text=user_query).model_dump()
-        image_file = request.files.get("image")
-       
-        # Initialize conversation if not present
-        if 'conversation' not in session:
-            session['conversation'] = []
+    # Handle image file if provided
+    if image_file:
+        try:
+            logging.info(f"Received an image file: {image_file.filename}")
+            filename = secure_filename(image_file.filename)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image_file.save(image_path)
+            logging.info(f"Image file saved at: {image_path}")
+        except Exception as e:
+            logging.error(f"Failed to process the uploaded image: {e}")
+            return jsonify({"error": "Failed to process the image."}), 500
+
+    # Prepare the state for the agent
+    agent_state = {
+        "input": {"user_query": user_query, "image_path": image_path},
+        "chat_history": session.get("conversation", []),
+        "agent_outcome": None,
+        "intermediate_steps": []
+    }
+
+    try:
+        # Run the agent workflow
+        output_state = agent_app.invoke(agent_state)
         
-        # Add user message to conversation history
-        add_message("user", user_query["text"])
-        logging.debug(f"Added user message to conversation history: {user_query['text']}")
+        # Log the full agent outcome for investigation
+        agent_outcome = output_state.get("agent_outcome")
+        logging.info(f"Full agent_outcome: {agent_outcome}")
+        print(f"RETURN_VALUES: {agent_outcome.return_values.get('output')}")
         
-        # Get the prompt and rag_document
-        prompt_data = match_prompt_to_query(user_query["text"])
-        system_prompt = prompt_data["prompt"]
-        rag_document = prompt_data.get("rag_document", [])
-        logging.info(f"Associated rag_document for retrieval: {rag_document}")
-        
-        # Retrieve context if rag_document is not empty
-        context = ""
-        if rag_document:
-            logging.info("Starting context retrieval.")
-            context_chunks = retrieve_similar_chunks(
-                query=user_query["text"],
-                faiss_store_path="faiss_store",
-                rag_document=rag_document
-            )
-            if context_chunks:
-                context = "\n\n".join(context_chunks)
-                logging.info(f"Retrieved {len(context_chunks)} chunks for context.")
-            else:
-                logging.warning(f"No relevant chunks found for rag_document: {rag_document}")
-        else:
-            logging.info("No documents specified for retrieval. Skipping context retrieval.")
-                    
-        # Handle image file if provided                    
-        if image_file:
-            try:
-                logging.info(f"Received an image file: {image_file.filename}")
-                filename = secure_filename(image_file.filename)
-                image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                image_file.save(image_path)
-                logging.info(f"Image file saved at: {image_path}")
-            except Exception as e:
-                logging.error(f"Failed to process the uploaded image: {e}")
-                return jsonify({"error": "Failed to process the image."}), 500
-        
-        # Call LLM with the retrieved context included
-        logging.info("Calling LLM with conversation history and retrieved context.")
-        llm_response = call_llm(
-            conversation_history=get_conversation(),
-            image_file=image_file,
-            system_prompt=system_prompt,
-            context=context.strip()  # Strip extra spaces or newlines
-        )
-        logging.info("LLM call successful. Extracting response.")
-        
-        # Add assistant's response to the conversation history
-        add_message('assistant', llm_response.response)
-        logging.debug(f"Assistant response added to conversation history: {llm_response.response[:100]}...")  # Log first 100 characters
-        
-        return jsonify({"response": llm_response.response})
-    
-    except ValidationError as ve:
-        logging.error(f"Validation error: {ve.errors()}")
-        return jsonify({"error": ve.errors()}), 422
+        # Include the full `agent_outcome` in the API response for inspection
+        return jsonify({"agent_outcome": agent_outcome})
     except Exception as e:
-        logging.error(f"Unexpected error: {e}", exc_info=True)
-        return jsonify({"error": "An unexpected error occurred."}), 500
+        logging.error(f"Error in agent workflow: {e}")
+        return jsonify({"error": "An error occurred while processing the query."}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)
