@@ -449,7 +449,7 @@ app = workflow.compile()
 if __name__ == "__main__":
     # Define test cases for text-only, image-only, and combined inputs
     test_cases = [
-        {"user_input": "Where is the next recycling facility to Frankallee 41, 60327, Franfurt am Main?", "image_path": None},  # Example 1: Address input
+        #{"user_input": "Where is the next recycling facility to Frankallee 41, 60327, Franfurt am Main?", "image_path": None},  # Example 1: Address input
         #{"user_input": "Where do I dispose my wine bottle?", "image_path": None},            # Example 2: Glas waste
         #{"user_input": "In which trash do diapers belong?", "image_path": None},             # Example 3: Bulky waste
         #{"user_input": "How does the recycling system in Frankfurt works?", "image_path": None},  # Example 4: General Waste

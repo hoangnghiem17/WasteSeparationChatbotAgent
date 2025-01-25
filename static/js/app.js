@@ -91,7 +91,7 @@ function handleSend() {
         
         // Display the bot's response
         const botResponseDiv = document.createElement("div");
-        botResponseDiv.textContent = data.response || "No response";
+        botResponseDiv.textContent = data.output || "No response";
         botResponseDiv.classList.add("message", "bot-message");
         document.getElementById("messages").appendChild(botResponseDiv);
     })

@@ -1,12 +1,12 @@
 import logging
 import os
 from werkzeug.utils import secure_filename
+
 from datetime import timedelta
 from flask import Flask, request, jsonify, render_template, session
-
 from langchain_core.agents import AgentFinish
-from langchain.agents.output_parsers.tools import ToolAgentAction
-from agents.waste_agent import run_tool_agent, agent_app
+
+from agent.waste_agent import agent_app
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -37,18 +37,20 @@ def index():
 
 @app.route('/reset', methods=['POST'])
 def reset_conversation():
-    session.pop('conversation', None)  # Clear conversation only
+    session.pop('conversation', None)  
     return jsonify({"response": "Conversation reset."})
 
 
 @app.route('/agent', methods=['POST'])
 def agent_endpoint():
+    
+    # Parse inputs
     data = request.form
     user_query = data.get("query")
-    image_file = request.files.get("image")  # Handle optional image input
+    image_file = request.files.get("image")  
     image_path = None
 
-    # Handle image file if provided
+    # Save uploaded images to directory
     if image_file:
         try:
             logging.info(f"Received an image file: {image_file.filename}")
@@ -69,20 +71,20 @@ def agent_endpoint():
     }
 
     try:
-        # Run the agent workflow
         output_state = agent_app.invoke(agent_state)
-        
-        # Log the full agent outcome for investigation
+
+        # Extract the final output from the agent outcome
         agent_outcome = output_state.get("agent_outcome")
-        logging.info(f"Full agent_outcome: {agent_outcome}")
-        print(f"RETURN_VALUES: {agent_outcome.return_values.get('output')}")
-        
-        # Include the full `agent_outcome` in the API response for inspection
-        return jsonify({"agent_outcome": agent_outcome})
+        if isinstance(agent_outcome, AgentFinish):
+            final_output = agent_outcome.return_values.get("output")
+            logging.info(f"Final output from agent: {final_output}")
+            return jsonify({"output": final_output})
+
+        logging.error("Agent outcome did not result in an AgentFinish.")
+        return jsonify({"error": "Agent did not complete execution as expected."})
     except Exception as e:
         logging.error(f"Error in agent workflow: {e}")
         return jsonify({"error": "An error occurred while processing the query."}), 500
-
 
 if __name__ == '__main__':
     app.run(debug=True)
