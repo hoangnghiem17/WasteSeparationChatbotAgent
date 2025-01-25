@@ -4,8 +4,8 @@ import os
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from config.llm import llm
-from config.prompt import categories, formatted_categories, keywords_categories
+from agent.llm import llm
+from agent.prompt import categories, formatted_categories, keywords_categories
 
 def classify_query(user_query: str = None, image_path: str = None) -> str:
     """

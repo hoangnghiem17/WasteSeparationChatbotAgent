@@ -4,7 +4,7 @@ from typing import List
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 
-from config.llm import openai_api_key
+from agent.llm import openai_api_key
 
 def retrieve_chunks(query: str, faiss_store_path: str, category: str, k: int = 2) -> List[str]:
     """

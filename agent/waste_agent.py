@@ -13,8 +13,8 @@ from langchain_core.agents import AgentFinish
 from langchain.agents.output_parsers.tools import ToolAgentAction
 from dotenv import load_dotenv
 
-from config.llm import llm
-from config.prompt import system_prompt
+from agent.llm import llm
+from agent.prompt import system_prompt
 from agent.query_classification import classify_query
 from agent.retrieval import retrieve_chunks
 from agent.geocoding import geocode_address
