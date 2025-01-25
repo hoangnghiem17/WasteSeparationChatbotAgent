@@ -86,7 +86,7 @@ def excel_to_sqlite_with_query(excel_file, sqlite_db, table_name, address_column
 # Example usage
 if __name__ == "__main__":
     excel_file_path = "setup/recyclinghof.xlsx"  # Adjusted path to uploaded file
-    sqlite_db_path = "waste_separation_frankfurt.db"
+    sqlite_db_path = "recycling_facility.db"
     table_name = "recyclinghof"
     address_columns = ["street", "zip", "district"]  # Replace with actual column names
 

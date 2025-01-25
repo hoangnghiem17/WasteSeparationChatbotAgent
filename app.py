@@ -1,12 +1,14 @@
 import logging
 import os
 from werkzeug.utils import secure_filename
+import uuid
 
 from datetime import timedelta
 from flask import Flask, request, jsonify, render_template, session
 from langchain_core.agents import AgentFinish
 
 from agent.waste_agent import agent_app
+from agent.logger import log_message
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -49,6 +51,10 @@ def agent_endpoint():
     user_query = data.get("query")
     image_file = request.files.get("image")  
     image_path = None
+    
+    # Prep to log conversation
+    conversation_id = session.get("conversation_id", str(uuid.uuid4()))
+    session["conversation_id"] = conversation_id
 
     # Save uploaded images to directory
     if image_file:
@@ -62,6 +68,9 @@ def agent_endpoint():
             logging.error(f"Failed to process the uploaded image: {e}")
             return jsonify({"error": "Failed to process the image."}), 500
 
+    # Log user message with both text and image if applicable
+    log_message(conversation_id, "user", message_text=user_query, message_image=image_path)
+    
     # Prepare the state for the agent
     agent_state = {
         "input": {"user_query": user_query, "image_path": image_path},
@@ -78,6 +87,10 @@ def agent_endpoint():
         if isinstance(agent_outcome, AgentFinish):
             final_output = agent_outcome.return_values.get("output")
             logging.info(f"Final output from agent: {final_output}")
+            
+            # Log agent response
+            log_message(conversation_id, "agent", message_text=final_output)
+            
             return jsonify({"output": final_output})
 
         logging.error("Agent outcome did not result in an AgentFinish.")

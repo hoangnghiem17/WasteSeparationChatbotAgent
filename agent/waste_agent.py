@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 # Global variables
 faiss_store_path = "faiss_store"
-db_path = "database/waste_separation_frankfurt.db"
+db_path = "database/recycling_facility.db"
 
 # Define Tools wrapped with LangChain decorators
 @tool
