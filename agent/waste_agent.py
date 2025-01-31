@@ -110,9 +110,7 @@ def run_tool_agent(state):
     Returns:
         dict: Updated state with the agent's outcome after invoking tools.
     """
-    #logging.info(f"Agent reasoning started with input: {state['input']}")
     agent_outcome = tool_runnable.invoke(state)
-    #logging.info(f"Agent reasoning completed. Outcome: {agent_outcome}")
     return {"agent_outcome": agent_outcome}
 
 # Agent Execution Process - invokes selected tools, processes their outputs and updates state
