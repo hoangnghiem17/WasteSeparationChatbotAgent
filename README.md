@@ -15,7 +15,7 @@ The chatbot is a multilingual (primarily German/English) conversational AI syste
 
 ### The Challenge
 
-Proper waste separation is crucial for environmental sustainability and efficient recycling processes on city-level. I researched this in detail in my master thesis for the city of Frankfurt. The results indicate that many citizens face challenges in:
+Proper waste separation is crucial for environmental sustainability and efficient recycling processes on city-level. I researched this in detail in my [master thesis](https://hoangnghiem17.github.io/projects/#master-thesis) for the city of Frankfurt. The results indicate that many citizens face challenges in:
 
 - **Identifying waste categories**: Uncertainty about which bin to use for specific items
 - **Finding disposal information**: Lack of knowledge about specialized waste disposal methods
